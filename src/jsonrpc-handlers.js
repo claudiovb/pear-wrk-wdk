@@ -161,7 +161,7 @@ function registerJsonRpcHandlers (ipc, context) {
           break
 
         case 'dispose':
-          result = await withErrorHandling(withContext(disposeWdkHandler))()
+          result = await withErrorHandling(withContext(disposeWdkHandler))(params)
           break
 
         default:

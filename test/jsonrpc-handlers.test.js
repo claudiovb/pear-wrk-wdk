@@ -73,8 +73,14 @@ function createContext () {
         }
       }
 
-      dispose () {
-        this.wallets = {}
+      dispose (blockchains) {
+        if (Array.isArray(blockchains) && blockchains.length > 0) {
+          for (const network of blockchains) {
+            delete this.wallets[network]
+          }
+        } else {
+          this.wallets = {}
+        }
       }
     },
     walletManagers: {
@@ -311,6 +317,68 @@ describe('JSON-RPC Transport', () => {
       const resp = ipc.getLastResponse()
       assert.strictEqual(resp.result.status, 'disposed')
       assert.strictEqual(context.wdk, null)
+    })
+
+    async function initTwoChainWdk () {
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      ipc.emit('data', frameMessage({ jsonrpc: '2.0', id: 1, method: 'getSeedAndEntropyFromMnemonic', params: { mnemonic } }))
+      await waitForResponse(ipc, 1)
+      const seedData = ipc.getLastResponse().result
+
+      const config = {
+        networks: {
+          ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } },
+          spark: { blockchain: 'spark', config: { rpcUrl: 'https://spark.example.com' } }
+        }
+      }
+      ipc.emit('data', frameMessage({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'initializeWDK',
+        params: {
+          config: JSON.stringify(config),
+          encryptionKey: seedData.encryptionKey,
+          encryptedSeed: seedData.encryptedSeedBuffer
+        }
+      }))
+      await waitForResponse(ipc, 2)
+      assert.ok(context.wdk)
+      assert.deepStrictEqual(Object.keys(context.wdk.wallets).sort(), ['ethereum', 'spark'])
+    }
+
+    test('dispose with no params disposes all wallets and nulls the WDK instance', async () => {
+      await initTwoChainWdk()
+
+      ipc.emit('data', frameMessage({ jsonrpc: '2.0', id: 3, method: 'dispose', params: {} }))
+      await waitForResponse(ipc, 3)
+
+      const resp = ipc.getLastResponse()
+      assert.strictEqual(resp.result.status, 'disposed')
+      assert.strictEqual(context.wdk, null, 'full dispose should null the WDK instance')
+    })
+
+    test('dispose with a single blockchain disposes only that wallet and keeps the instance alive', async () => {
+      await initTwoChainWdk()
+      const wdk = context.wdk
+
+      ipc.emit('data', frameMessage({ jsonrpc: '2.0', id: 3, method: 'dispose', params: { blockchains: ['ethereum'] } }))
+      await waitForResponse(ipc, 3)
+
+      const resp = ipc.getLastResponse()
+      assert.strictEqual(resp.result.status, 'disposed')
+      assert.strictEqual(context.wdk, wdk, 'targeted dispose should keep the WDK instance alive')
+      assert.deepStrictEqual(Object.keys(context.wdk.wallets), ['spark'], 'only the targeted wallet should be removed')
+    })
+
+    test('dispose with an empty blockchains array disposes everything (treated as full dispose)', async () => {
+      await initTwoChainWdk()
+
+      ipc.emit('data', frameMessage({ jsonrpc: '2.0', id: 3, method: 'dispose', params: { blockchains: [] } }))
+      await waitForResponse(ipc, 3)
+
+      const resp = ipc.getLastResponse()
+      assert.strictEqual(resp.result.status, 'disposed')
+      assert.strictEqual(context.wdk, null, 'empty array should behave like a full dispose')
     })
   })
 

@@ -235,16 +235,31 @@ async function resetWdkWallets (params, context) {
 }
 
 /**
+ * Dispose the WDK instance, fully or for specific blockchains.
  *
- * @param {any} request
+ * @param {{ blockchains?: string[] }} [request] - Optional list of blockchains to
+ *   dispose. Omit (or pass an empty array) to dispose the entire WDK instance.
  * @param {RpcContext} context
  */
 async function disposeWdkHandler (request, context) {
+  // A non-empty array means a targeted dispose; anything else (omitted, empty
+  // array, non-array) falls back to the legacy "dispose everything" behavior.
+  const blockchains = request && Array.isArray(request.blockchains) && request.blockchains.length > 0
+    ? request.blockchains
+    : undefined
+
   if (context.wdk) {
-    context.wdk.dispose()
-    context.wdk = null
+    if (blockchains) {
+      // Targeted dispose: unregister only the named wallets and keep the WDK
+      // instance (seed + remaining wallets) alive so it can keep serving calls.
+      context.wdk.dispose(blockchains)
+    } else {
+      // Full dispose: tear the whole instance down.
+      context.wdk.dispose()
+      context.wdk = null
+    }
   }
-  logger.info('WDK disposed')
+  logger.info('WDK disposed', blockchains || 'all')
   return { status: 'disposed' }
 }
 

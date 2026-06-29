@@ -22,7 +22,9 @@ export interface WorkletStartResponse {
 }
 
 export interface DisposeRequest {
-  // Empty request
+  // Optional list of blockchains to dispose. Omit (or pass an empty array) to
+  // dispose the entire WDK instance.
+  blockchains?: string[];
 }
 
 export interface RpcContext {
