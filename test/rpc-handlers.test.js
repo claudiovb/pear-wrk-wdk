@@ -211,7 +211,7 @@ describe('RPC Handlers', () => {
       assert.ok(result.encryptedEntropyBuffer, 'encryptedEntropyBuffer should be present')
     })
 
-    test('should reject invalid mnemonic', async () => {
+    test('should reject mnemonic with wrong word count', async () => {
       registerRpcHandlers(mockRpc, context)
 
       await assert.rejects(
@@ -219,6 +219,28 @@ describe('RPC Handlers', () => {
           mnemonic: 'invalid mnemonic'
         }),
         /mnemonic must contain exactly 12 or 24 words/
+      )
+    })
+
+    test('should reject mnemonic with a non-BIP39 word', async () => {
+      registerRpcHandlers(mockRpc, context)
+
+      await assert.rejects(
+        async () => await mockRpc.handlers.getSeedAndEntropyFromMnemonic({
+          mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon notaword'
+        }),
+        /contains words not in the BIP-39 wordlist.*notaword.*position 12/
+      )
+    })
+
+    test('should reject mnemonic with multiple non-BIP39 words', async () => {
+      registerRpcHandlers(mockRpc, context)
+
+      await assert.rejects(
+        async () => await mockRpc.handlers.getSeedAndEntropyFromMnemonic({
+          mnemonic: 'abandon typo1 abandon abandon abandon abandon abandon abandon abandon abandon abandon typo2'
+        }),
+        /contains words not in the BIP-39 wordlist.*typo1.*position 2.*typo2.*position 12/
       )
     })
 

@@ -18,10 +18,10 @@ const LOG_LEVELS = {
  */
 function getLogLevel () {
   if (typeof process === 'undefined' || !process.env) {
-    return LOG_LEVELS.INFO
+    return LOG_LEVELS.ERROR
   }
 
-  const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'development' ? 'DEBUG' : 'INFO')
+  const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'development' ? 'DEBUG' : 'ERROR')
 
   switch (level.toUpperCase()) {
     case 'DEBUG':

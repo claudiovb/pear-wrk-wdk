@@ -1,4 +1,7 @@
 const ERROR_CODES = require('../exceptions/error-codes')
+const { wordlist } = require('@scure/bip39/wordlists/english.js')
+
+const bip39WordlistSet = new Set(wordlist)
 
 /**
  * Validate that a value is a non-empty string
@@ -91,6 +94,15 @@ function validateMnemonic (value, fieldName) {
   const words = value.trim().split(/\s+/)
   if (words.length !== 12 && words.length !== 24) {
     throw new Error(`${fieldName} must contain exactly 12 or 24 words`)
+  }
+
+  const invalid = words
+    .map((word, i) => ({ word, position: i + 1 }))
+    .filter(({ word }) => !bip39WordlistSet.has(word))
+
+  if (invalid.length > 0) {
+    const details = invalid.map(({ word, position }) => `"${word}" at position ${position}`).join(', ')
+    throw new Error(`${fieldName} contains words not in the BIP-39 wordlist: ${details}`)
   }
 }
 

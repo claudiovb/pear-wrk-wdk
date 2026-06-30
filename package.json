@@ -23,7 +23,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@scure/bip39": "^1.6.0",
+    "@scure/bip39": "^2.2.0",
     "hrpc": "^4.0.1",
     "hyperschema": "^1.12.4"
   },

@@ -47,7 +47,9 @@ const generateEncryptionKey = () => {
  * Encrypt data using AES-256-GCM
  * @param {Uint8Array | Buffer} data - Data to encrypt
  * @param {Buffer | string} key - Encryption key as Buffer or Base64-encoded string
- * @returns {string} Base64-encoded encrypted data with IV and auth tag
+ * @returns {string} Base64-encoded encrypted data with IV and auth tag.
+ *   The returned string cannot be zeroed — treat it as residual heap data
+ *   once it is no longer needed.
  */
 const encrypt = (data, key) => {
   const iv = crypto.randomBytes(12) // 96-bit IV for GCM
@@ -132,10 +134,13 @@ const generateEntropy = (wordCount) => {
 }
 
 /**
- * Encrypt seed and entropy with a new encryption key
+ * Encrypt seed and entropy with a new encryption key.
+ * All Buffer inputs are zeroed before returning.
  * @param {Uint8Array | Buffer} seed - Seed bytes to encrypt
  * @param {Uint8Array | Buffer} entropy - Entropy bytes to encrypt
- * @returns {WdkEntropyResult} Object containing encryptionKey, encryptedSeedBuffer, and encryptedEntropyBuffer
+ * @returns {WdkEntropyResult} Object containing encryptionKey, encryptedSeedBuffer, and encryptedEntropyBuffer.
+ *   All three returned values are strings and cannot be zeroed — treat them
+ *   as residual heap data once no longer needed.
  */
 const encryptSecrets = (seed, entropy) => {
   const encryptionKeyBuffer = crypto.randomBytes(32)

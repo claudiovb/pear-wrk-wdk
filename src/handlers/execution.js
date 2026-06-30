@@ -109,7 +109,7 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
 
   if (typeof account[methodName] !== 'function') {
     if (options?.defaultValue !== undefined) {
-      logger.warn(`${methodName} not available for network: ${network}, returning default value`)
+      logger.error(`${methodName} not available for network: ${network}, returning default value`)
       return options.defaultValue
     }
 
