@@ -43,6 +43,7 @@
       "default": "./worklet.js"
     },
     "./jsonrpc": {
+      "types": "./types/jsonrpc.d.ts",
       "default": "./jsonrpc.js"
     },
     "./package.json": "./package.json",
