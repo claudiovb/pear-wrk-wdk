@@ -1,0 +1,400 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "name": "log-type-enum",
+      "namespace": "wdk-core",
+      "offset": 1,
+      "enum": [
+        {
+          "key": "info",
+          "version": 1
+        },
+        {
+          "key": "error",
+          "version": 1
+        },
+        {
+          "key": "debug",
+          "version": 1
+        }
+      ],
+      "strings": false
+    },
+    {
+      "name": "log-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "type",
+          "required": false,
+          "type": "@wdk-core/log-type-enum",
+          "version": 1
+        },
+        {
+          "name": "data",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "workletStart-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "enableDebugLogs",
+          "required": false,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "seedPhrase",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "seedBuffer",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "config",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "workletStart-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "status",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "dispose-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": []
+    },
+    {
+      "name": "callMethod-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 3,
+      "fields": [
+        {
+          "name": "methodName",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "network",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "accountIndex",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "args",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "options",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "callMethod-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "result",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "registerWallet-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "config",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "registerWallet-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "status",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "blockchains",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "registerProtocol-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "config",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "registerProtocol-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "status",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "generateEntropyAndEncrypt-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "wordCount",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "generateEntropyAndEncrypt-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "encryptionKey",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "encryptedSeedBuffer",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "encryptedEntropyBuffer",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "getMnemonicFromEntropy-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "encryptedEntropy",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "encryptionKey",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "getMnemonicFromEntropy-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "mnemonic",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "getSeedAndEntropyFromMnemonic-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "mnemonic",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "getSeedAndEntropyFromMnemonic-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "encryptionKey",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "encryptedSeedBuffer",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "encryptedEntropyBuffer",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "initializeWDK-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "seedPhrase",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "encryptionKey",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "encryptedSeed",
+          "required": false,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "config",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "initializeWDK-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "status",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "resetWdkWallets-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "config",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "resetWdkWallets-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "status",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    }
+  ]
+}

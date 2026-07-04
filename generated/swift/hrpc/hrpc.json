@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "id": 0,
+      "name": "@wdk-core/log",
+      "request": {
+        "name": "@wdk-core/log-request",
+        "send": true
+      },
+      "version": 1
+    },
+    {
+      "id": 1,
+      "name": "@wdk-core/worklet-start",
+      "request": {
+        "name": "@wdk-core/workletStart-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/workletStart-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 2,
+      "name": "@wdk-core/dispose",
+      "request": {
+        "name": "@wdk-core/dispose-request",
+        "send": true
+      },
+      "version": 1
+    },
+    {
+      "id": 3,
+      "name": "@wdk-core/call-method",
+      "request": {
+        "name": "@wdk-core/callMethod-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/callMethod-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 4,
+      "name": "@wdk-core/generate-entropy-and-encrypt",
+      "request": {
+        "name": "@wdk-core/generateEntropyAndEncrypt-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/generateEntropyAndEncrypt-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 5,
+      "name": "@wdk-core/get-mnemonic-from-entropy",
+      "request": {
+        "name": "@wdk-core/getMnemonicFromEntropy-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/getMnemonicFromEntropy-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 6,
+      "name": "@wdk-core/initialize-wdk",
+      "request": {
+        "name": "@wdk-core/initializeWDK-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/initializeWDK-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 7,
+      "name": "@wdk-core/get-seed-and-entropy-from-mnemonic",
+      "request": {
+        "name": "@wdk-core/getSeedAndEntropyFromMnemonic-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/getSeedAndEntropyFromMnemonic-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 8,
+      "name": "@wdk-core/register-wallet",
+      "request": {
+        "name": "@wdk-core/registerWallet-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/registerWallet-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 9,
+      "name": "@wdk-core/register-protocol",
+      "request": {
+        "name": "@wdk-core/registerProtocol-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/registerProtocol-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 10,
+      "name": "@wdk-core/reset-wdk-wallets",
+      "request": {
+        "name": "@wdk-core/resetWdkWallets-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/resetWdkWallets-response",
+        "stream": false
+      },
+      "version": 1
+    }
+  ]
+}

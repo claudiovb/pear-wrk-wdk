@@ -5,3 +5,4 @@
 generated/bundle/
 generated/schema/
 generated/wallet-modules.js
+.build/

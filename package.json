@@ -10,6 +10,7 @@
     "test:watch": "node --test --watch test/**/*.test.js",
     "gen:hrpc": "node scripts/generate-hrpc.js",
     "gen:schema": "npm run gen:hrpc",
+    "gen:swift": "npm run gen:hrpc && node scripts/generate-swift-hrpc.js",
     "prepare": "npm run gen:hrpc"
   },
   "files": [
@@ -29,6 +30,8 @@
   },
   "devDependencies": {
     "bare-ipc": "^1.1.1",
+    "hrpc-swift": "^0.2.0",
+    "hyperschema-swift": "^0.3.0",
     "rimraf": "6.0.1",
     "standard": "17.1.2",
     "typescript": "5.8.3"
