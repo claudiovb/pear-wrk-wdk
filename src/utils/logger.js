@@ -4,12 +4,22 @@
  * Can be configured via environment variables
  */
 
+const { safeStringify } = require('./safe-stringify')
+
 const LOG_LEVELS = {
   DEBUG: 0,
   INFO: 1,
   WARN: 2,
   ERROR: 3,
   NONE: 4
+}
+
+const barePlatform = globalThis.Bare && globalThis.Bare.platform
+const isJSC = barePlatform === 'ios' || barePlatform === 'darwin'
+
+function sanitizeArgs (args) {
+  if (!isJSC) return args
+  return args.map((arg) => (typeof arg === 'object' && arg !== null ? safeStringify(arg) : arg))
 }
 
 /**
@@ -51,7 +61,7 @@ const logger = {
    */
   debug: (...args) => {
     if (currentLogLevel <= LOG_LEVELS.DEBUG) {
-      console.debug('[DEBUG]', ...args)
+      console.debug('[DEBUG]', ...sanitizeArgs(args))
     }
   },
 
@@ -61,7 +71,7 @@ const logger = {
    */
   info: (...args) => {
     if (currentLogLevel <= LOG_LEVELS.INFO) {
-      console.log('[INFO]', ...args)
+      console.log('[INFO]', ...sanitizeArgs(args))
     }
   },
 
@@ -71,7 +81,7 @@ const logger = {
    */
   warn: (...args) => {
     if (currentLogLevel <= LOG_LEVELS.WARN) {
-      console.warn('[WARN]', ...args)
+      console.warn('[WARN]', ...sanitizeArgs(args))
     }
   },
 
@@ -81,7 +91,7 @@ const logger = {
    */
   error: (...args) => {
     if (currentLogLevel <= LOG_LEVELS.ERROR) {
-      console.error('[ERROR]', ...args)
+      console.error('[ERROR]', ...sanitizeArgs(args))
     }
   }
 }
