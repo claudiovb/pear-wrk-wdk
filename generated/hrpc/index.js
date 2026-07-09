@@ -27,7 +27,11 @@ const methods = new Map([
   ['@wdk-core/registerProtocol', 9],
   [9, '@wdk-core/registerProtocol'],
   ['@wdk-core/resetWdkWallets', 10],
-  [10, '@wdk-core/resetWdkWallets']
+  [10, '@wdk-core/resetWdkWallets'],
+  ['@wdk-core/callModule', 11],
+  [11, '@wdk-core/callModule'],
+  ['@wdk-core/moduleEvent', 12],
+  [12, '@wdk-core/moduleEvent']
 ])
 
 class HRPC {
@@ -45,7 +49,9 @@ class HRPC {
       ['@wdk-core/getSeedAndEntropyFromMnemonic', getEncoding('@wdk-core/getSeedAndEntropyFromMnemonic-request')],
       ['@wdk-core/registerWallet', getEncoding('@wdk-core/registerWallet-request')],
       ['@wdk-core/registerProtocol', getEncoding('@wdk-core/registerProtocol-request')],
-      ['@wdk-core/resetWdkWallets', getEncoding('@wdk-core/resetWdkWallets-request')]
+      ['@wdk-core/resetWdkWallets', getEncoding('@wdk-core/resetWdkWallets-request')],
+      ['@wdk-core/callModule', getEncoding('@wdk-core/callModule-request')],
+      ['@wdk-core/moduleEvent', getEncoding('@wdk-core/moduleEvent-request')]
     ])
     this._responseEncodings = new Map([
       ['@wdk-core/workletStart', getEncoding('@wdk-core/workletStart-response')],
@@ -56,7 +62,8 @@ class HRPC {
       ['@wdk-core/getSeedAndEntropyFromMnemonic', getEncoding('@wdk-core/getSeedAndEntropyFromMnemonic-response')],
       ['@wdk-core/registerWallet', getEncoding('@wdk-core/registerWallet-response')],
       ['@wdk-core/registerProtocol', getEncoding('@wdk-core/registerProtocol-response')],
-      ['@wdk-core/resetWdkWallets', getEncoding('@wdk-core/resetWdkWallets-response')]
+      ['@wdk-core/resetWdkWallets', getEncoding('@wdk-core/resetWdkWallets-response')],
+      ['@wdk-core/callModule', getEncoding('@wdk-core/callModule-response')]
     ])
     this._rpc = new RPC(stream, async (req) => {
       const command = methods.get(req.command)
@@ -198,6 +205,14 @@ class HRPC {
     return this._call('@wdk-core/resetWdkWallets', args)
   }
 
+  async callModule(args) {
+    return this._call('@wdk-core/callModule', args)
+  }
+
+  moduleEvent(args) {
+    return this._callSync('@wdk-core/moduleEvent', args)
+  }
+
   onLog(responseFn) {
     this._handlers['@wdk-core/log'] = responseFn
   }
@@ -242,6 +257,14 @@ class HRPC {
     this._handlers['@wdk-core/resetWdkWallets'] = responseFn
   }
 
+  onCallModule(responseFn) {
+    this._handlers['@wdk-core/callModule'] = responseFn
+  }
+
+  onModuleEvent(responseFn) {
+    this._handlers['@wdk-core/moduleEvent'] = responseFn
+  }
+
   _requestIsStream(command) {
     return [
     ].includes(command)
@@ -257,7 +280,8 @@ class HRPC {
     return [
       // prettier-ignore
       '@wdk-core/log',
-      '@wdk-core/dispose'
+      '@wdk-core/dispose',
+      '@wdk-core/moduleEvent'
     ].includes(command)
   }
 }

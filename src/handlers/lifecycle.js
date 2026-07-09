@@ -40,6 +40,8 @@ async function initializeWdkHandler (init, context) {
 
   if (wdk) {
     logger.info('Disposing existing WDK instance...')
+    // Close hosted modules too, so they reconstruct with the new seed below.
+    if (context.moduleRuntime) await context.moduleRuntime.closeAll()
     wdk.dispose()
   }
 
@@ -90,6 +92,16 @@ async function initializeWdkHandler (init, context) {
         `Failed to decrypt seed: ${error.message}`,
         ERROR_CODES.BAD_REQUEST
       )
+    }
+
+    // Construct seed-bound modules before WDK takes the buffer; factories consume
+    // the seed synchronously — the same buffer the wallet uses, never copied or retained.
+    if (workletConfig.modules && Object.keys(workletConfig.modules).length > 0) {
+      if (context.moduleRuntime) {
+        context.moduleRuntime.constructFromConfig(workletConfig.modules, decryptedSeedBuffer)
+      } else {
+        logger.warn('Modules configured but none bundled (no module runtime); skipping')
+      }
     }
 
     context.wdk = new WDK(decryptedSeedBuffer)
@@ -210,6 +222,7 @@ async function resetWdkWallets (params, context) {
   const targetChains = Object.values(workletConfig.networks)
     .filter(networkConfig => networkConfig.config && typeof networkConfig.config === 'object')
     .map(networkConfig => networkConfig.blockchain)
+  // Only disposes these chains; modules stay up (a full dispose closes them).
   wdk.dispose(targetChains)
 
   for (const networkConfig of Object.values(workletConfig.networks)) {
@@ -248,6 +261,12 @@ async function disposeWdkHandler (request, context) {
     ? request.blockchains
     : undefined
 
+  // Full dispose only: tear down hosted modules so their resources don't leak on
+  // lock. A targeted per-blockchain dispose leaves the wallet — and its modules — running.
+  if (!blockchains && context.moduleRuntime && typeof context.moduleRuntime.closeAll === 'function') {
+    await context.moduleRuntime.closeAll()
+  }
+
   if (context.wdk) {
     if (blockchains) {
       context.wdk.dispose(blockchains)
@@ -259,7 +278,6 @@ async function disposeWdkHandler (request, context) {
   logger.info('WDK disposed', blockchains || 'all')
   return { status: 'disposed' }
 }
-
 module.exports = {
   initializeWdkHandler,
   disposeWdkHandler,

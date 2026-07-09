@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "schema": [
     {
       "name": "log-type-enum",
@@ -374,6 +374,71 @@
       "fields": [
         {
           "name": "status",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "callModule-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "module",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "method",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "args",
+          "required": false,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "callModule-response",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "result",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "moduleEvent-request",
+      "namespace": "wdk-core",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "module",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "event",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "payload",
+          "required": false,
           "type": "string",
           "version": 1
         }

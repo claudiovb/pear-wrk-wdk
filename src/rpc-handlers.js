@@ -1,4 +1,4 @@
-const { generateEntropyAndEncryptHandler, getMnemonicFromEntropyHandler, getSeedAndEntropyFromMnemonicHandler, initializeWdkHandler, resetWdkWallets, disposeWdkHandler, registerWalletHandler, registerProtocolHandler, callMethodHandler } = require('./handlers')
+const { generateEntropyAndEncryptHandler, getMnemonicFromEntropyHandler, getSeedAndEntropyFromMnemonicHandler, initializeWdkHandler, resetWdkWallets, disposeWdkHandler, registerWalletHandler, registerProtocolHandler, callMethodHandler, createModuleRuntime } = require('./handlers')
 const rpcException = require('./exceptions/rpc-exception')
 
 /** @typedef {import('../types/rpc').RpcContext} RpcContext */
@@ -80,6 +80,15 @@ function registerRpcHandlers (rpc, context) {
   rpc.onDispose(withErrorHandling(withContext(disposeWdkHandler)))
 
   rpc.onResetWdkWallets(withErrorHandling(withContext(resetWdkWallets)))
+
+  // Generic module subsystem (only when modules are bundled). Modules are
+  // constructed from config at WDK init (lifecycle.js); here we expose the
+  // runtime on the context and wire the per-instance handlers.
+  if (context.moduleManagers && Object.keys(context.moduleManagers).length > 0) {
+    const moduleRuntime = createModuleRuntime(rpc, context)
+    context.moduleRuntime = moduleRuntime
+    rpc.onCallModule(withErrorHandling(moduleRuntime.callModule))
+  }
 }
 
 module.exports = {
