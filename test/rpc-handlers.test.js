@@ -9,7 +9,7 @@
 // Load test setup first to mock bare-crypto
 require('./setup.js')
 
-const { test, describe, beforeEach, afterEach } = require('node:test')
+const { test, describe, beforeEach, afterEach, mock } = require('node:test')
 const assert = require('node:assert')
 
 // Mock dependencies
@@ -24,7 +24,10 @@ const mockRpc = {
   onRegisterWallet: function (handler) { this.handlers.registerWallet = handler },
   onRegisterProtocol: function (handler) { this.handlers.registerProtocol = handler },
   onDispose: function (handler) { this.handlers.dispose = handler },
-  onResetWdkWallets: function (handler) { this.handlers.resetWdkWallets = handler }
+  onResetWdkWallets: function (handler) { this.handlers.resetWdkWallets = handler },
+  // Generic module subsystem (only wired when context.moduleManagers is set).
+  onCallModule: function (handler) { this.handlers.callModule = handler },
+  moduleEvent: function (payload) { (this.events ||= []).push(payload) }
 }
 
 describe('RPC Handlers', () => {
@@ -334,6 +337,84 @@ describe('RPC Handlers', () => {
         /encryptionKey.*must be provided or omitted/
       )
     })
+
+    test('constructs configured modules with the seed at init and does NOT retain it', async () => {
+      const { mnemonicToSeedSync } = require('@scure/bip39')
+      // The factory consumes the seed synchronously during construction, so it
+      // copies it here; the worklet then zeroes the original.
+      let capturedSeed = null
+      context.moduleManagers = {
+        addressBook: {
+          createModule: (ctx) => { capturedSeed = Buffer.from(ctx.seed); return {} }
+        }
+      }
+      registerRpcHandlers(mockRpc, context)
+
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = {
+        networks: {
+          ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } }
+        },
+        modules: { addressBook: { namespace: 'tether-wallet' } }
+      }
+
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData.encryptionKey,
+        encryptedSeed: seedData.encryptedSeedBuffer
+      })
+
+      assert.ok(capturedSeed, 'module was constructed with a seed')
+      assert.strictEqual(capturedSeed.length, 64, 'module received the 64-byte BIP39 seed')
+      assert.ok(
+        capturedSeed.equals(Buffer.from(mnemonicToSeedSync(mnemonic))),
+        'seed handed to the factory equals mnemonicToSeedSync(mnemonic)'
+      )
+      assert.strictEqual(context.seed, undefined, 'raw seed is NOT retained on the context')
+    })
+
+    test('does not retain the seed when no modules are configured', async () => {
+      registerRpcHandlers(mockRpc, context)
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = {
+        networks: {
+          ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } }
+        }
+      }
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData.encryptionKey,
+        encryptedSeed: seedData.encryptedSeedBuffer
+      })
+      assert.strictEqual(context.seed, undefined, 'seed is not retained')
+    })
+
+    test('re-init closes the previous modules and reconstructs them', async () => {
+      const closed = []
+      let constructed = 0
+      context.moduleManagers = {
+        addressBook: {
+          createModule: () => { const id = ++constructed; return { id, close: () => { closed.push(id) } } }
+        }
+      }
+      registerRpcHandlers(mockRpc, context)
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = {
+        networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } },
+        modules: { addressBook: {} }
+      }
+      const initArgs = { config: JSON.stringify(config), encryptionKey: seedData.encryptionKey, encryptedSeed: seedData.encryptedSeedBuffer }
+
+      await mockRpc.handlers.initializeWDK(initArgs)
+      assert.strictEqual(constructed, 1, 'module constructed on first init')
+
+      await mockRpc.handlers.initializeWDK(initArgs)
+      assert.deepStrictEqual(closed, [1], 'previous module instance closed on re-init')
+      assert.strictEqual(constructed, 2, 'module reconstructed on re-init')
+    })
   })
 
   describe('callMethod', () => {
@@ -454,6 +535,24 @@ describe('RPC Handlers', () => {
       // Should not throw
       await mockRpc.handlers.dispose()
       assert.strictEqual(context.wdk, null)
+    })
+
+    test('closes hosted module instances via the runtime on dispose', async () => {
+      const instanceClose = mock.fn()
+      context.moduleManagers = {
+        addressBook: { createModule: () => ({ close: instanceClose }) }
+      }
+      registerRpcHandlers(mockRpc, context)
+
+      // Construct a module (as WDK init would) so there's something to tear down.
+      await context.moduleRuntime.construct('addressBook', {}, Buffer.alloc(64, 0xab))
+      context.wdk = { dispose: mock.fn() }
+
+      await mockRpc.handlers.dispose()
+
+      assert.strictEqual(instanceClose.mock.callCount(), 1, 'module instance closed on dispose')
+      assert.strictEqual(context.moduleInstances.size, 0, 'module instances cleared')
+      assert.strictEqual(context.wdk, null, 'WDK disposed')
     })
   })
 })

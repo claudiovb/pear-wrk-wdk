@@ -135,6 +135,28 @@
         "stream": false
       },
       "version": 1
+    },
+    {
+      "id": 11,
+      "name": "@wdk-core/callModule",
+      "request": {
+        "name": "@wdk-core/callModule-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/callModule-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 12,
+      "name": "@wdk-core/moduleEvent",
+      "request": {
+        "name": "@wdk-core/moduleEvent-request",
+        "send": true
+      },
+      "version": 1
     }
   ]
 }

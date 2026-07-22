@@ -96,4 +96,12 @@ try {
   process.exit(1)
 }
 
+// Set VERSION from schema.json, last (HRPCBuilder rewrites messages.js). Otherwise a
+// clean build resets it to 1, since the ratchet in generated/schema/ is gitignored.
+const schemaVersion = schemaData.version || 1
+const pinnedMessages = fs.readFileSync(hrpcMessagesPath, 'utf8')
+  .replace(/\/\/ Schema Version: \d+/, `// Schema Version: ${schemaVersion}`)
+  .replace(/const VERSION = \d+/, `const VERSION = ${schemaVersion}`)
+fs.writeFileSync(hrpcMessagesPath, pinnedMessages)
+
 console.log('Schema generation complete!')

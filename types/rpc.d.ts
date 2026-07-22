@@ -41,6 +41,52 @@ export interface RpcContext {
 
   // WDK load error (if any)
   wdkLoadError: any;
+
+  // Generic module managers (from the bundler-generated entry). Optional.
+  moduleManagers?: Record<string, WdkModuleManager>;
+
+  // Live module runtime (set by registerRpcHandlers when modules are configured).
+  moduleRuntime?: any;
+
+  // Live module instances, managed by the runtime. Optional.
+  moduleInstances?: Map<string, any>;
+
+  // Capabilities injected into modules (reserved; empty by default). Optional.
+  capabilities?: Record<string, any>;
+}
+
+/**
+ * The contract a bundled WDK module must satisfy (produced by the
+ * wdk-worklet-bundler `modules` codegen). pear-wrk-wdk drives this generically.
+ */
+export interface WdkModuleManager {
+  // Events forwarded host-ward as moduleEvent (e.g. ['update'])
+  events?: string[];
+  // Constructs the module instance from the module context object. A module that
+  // needs storage builds it from `config` (e.g. config.storagePath) and tears it
+  // down in its own close(). The factory must consume `seed` synchronously.
+  createModule: (ctx: {
+    seed: any;
+    config: any;
+    capabilities: Record<string, any>;
+    emit: (event: string, payload?: any) => void;
+  }) => any | Promise<any>;
+}
+
+export interface CallModuleRequest {
+  module: string;
+  method: string;
+  args?: string; // JSON string of arguments
+}
+
+export interface CallModuleResponse {
+  result?: string | null; // JSON string of method result
+}
+
+export interface ModuleEventRequest {
+  module: string;
+  event: string;
+  payload?: string | null; // JSON string
 }
 
 export interface CallMethodRequest {
@@ -164,5 +210,10 @@ export interface WdkWorkletConfig {
   };
   protocols?: {
     [protocolName: string]: ProtocolConfig
+  };
+  // Per-module runtime config (storagePath, namespace, mirrors, …), constructed
+  // at WDK init alongside networks/protocols.
+  modules?: {
+    [moduleName: string]: Record<string, unknown>
   };
 }

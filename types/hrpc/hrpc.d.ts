@@ -5,6 +5,9 @@ import type {
   DisposeRequest,
   CallMethodRequest,
   CallMethodResponse,
+  CallModuleRequest,
+  CallModuleResponse,
+  ModuleEventRequest,
   WdkInitializeParams,
   WdkGenerateEntropyParams,
   WdkEntropyResult,
@@ -87,6 +90,16 @@ export class HRPC {
   registerProtocol(args: { config: string }): Promise<{ status: string }>;
 
   /**
+   * Call a method on a bundled module
+   */
+  callModule(args: CallModuleRequest): Promise<CallModuleResponse>;
+
+  /**
+   * Send a module event to the host
+   */
+  moduleEvent(args: ModuleEventRequest): void;
+
+  /**
    * Register a handler for log messages
    */
   onLog(responseFn: (request: LogRequest) => Promise<void>): void;
@@ -157,6 +170,20 @@ export class HRPC {
    */
   onResetWdkWallets(
     responseFn: (request: WdkResetWalletParams) => Promise<{ status: string }>
+  ): void;
+
+  /**
+   * Register a handler for module calls
+   */
+  onCallModule(
+    responseFn: (request: CallModuleRequest) => Promise<CallModuleResponse>
+  ): void;
+
+  /**
+   * Register a handler for module events
+   */
+  onModuleEvent(
+    responseFn: (request: ModuleEventRequest) => Promise<void>
   ): void;
 }
 
