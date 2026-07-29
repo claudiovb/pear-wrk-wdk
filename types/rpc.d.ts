@@ -117,7 +117,7 @@ export interface CallMethodOptions {
   // Default value to return if method doesn't exist
   defaultValue: any;
 
-  // Protocol type (e.g., 'swap', 'bridge', 'lending', 'fiat')
+  // Protocol type (e.g., 'swap', 'swidge', 'bridge', 'lending', 'fiat')
   protocolType: ProtocolType;
 
   // Protocol name (e.g., 'USDT0')
@@ -154,6 +154,7 @@ export interface WdkGetMnemonicParams {
 
 export enum ProtocolType {
   SWAP = "swap",
+  SWIDGE = "swidge",
   BRIDGE = "bridge",
   LENDING = "lending",
   FIAT = "fiat",

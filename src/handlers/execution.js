@@ -87,6 +87,12 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
       }
       account = account.getSwapProtocol(options?.protocolName)
       break
+    case 'swidge':
+      if (!options?.protocolName) {
+        throw createErrorWithCode('Protocol name is required for swidge protocol', ERROR_CODES.BAD_REQUEST)
+      }
+      account = account.getSwidgeProtocol(options?.protocolName)
+      break
     case 'bridge':
       if (!options?.protocolName) {
         throw createErrorWithCode('Protocol name is required for bridge protocol', ERROR_CODES.BAD_REQUEST)

@@ -448,6 +448,77 @@ describe('RPC Handlers', () => {
       assert.ok(parsed.address, 'address should be in result')
     })
 
+    test('should call a swidge protocol method successfully', async () => {
+      const swidgeArgs = {
+        fromToken: 'USDT',
+        toToken: 'USDC',
+        fromTokenAmount: '1000000'
+      }
+      let requestedProtocolName
+      let receivedArgs
+
+      context.wdk = {
+        async getAccount (network, accountIndex) {
+          assert.strictEqual(network, 'ethereum')
+          assert.strictEqual(accountIndex, 0)
+
+          return {
+            getSwidgeProtocol (protocolName) {
+              requestedProtocolName = protocolName
+
+              return {
+                async quoteSwidge (...args) {
+                  receivedArgs = args
+                  return { route: 'lifi' }
+                }
+              }
+            }
+          }
+        },
+        dispose () {}
+      }
+      registerRpcHandlers(mockRpc, context)
+
+      const result = await mockRpc.handlers.callMethod({
+        methodName: 'quoteSwidge',
+        network: 'ethereum',
+        accountIndex: 0,
+        args: JSON.stringify([swidgeArgs]),
+        options: JSON.stringify({
+          protocolType: 'swidge',
+          protocolName: 'LI.FI'
+        })
+      })
+
+      assert.strictEqual(requestedProtocolName, 'LI.FI')
+      assert.deepStrictEqual(receivedArgs, [swidgeArgs])
+      assert.deepStrictEqual(JSON.parse(result.result), { route: 'lifi' })
+    })
+
+    test('should require a protocol name for swidge calls', async () => {
+      context.wdk = {
+        async getAccount () {
+          return {
+            getSwidgeProtocol () {
+              throw new Error('getSwidgeProtocol should not be called')
+            }
+          }
+        },
+        dispose () {}
+      }
+      registerRpcHandlers(mockRpc, context)
+
+      await assert.rejects(
+        async () => await mockRpc.handlers.callMethod({
+          methodName: 'quoteSwidge',
+          network: 'ethereum',
+          accountIndex: 0,
+          options: JSON.stringify({ protocolType: 'swidge' })
+        }),
+        /Protocol name is required for swidge protocol/
+      )
+    })
+
     test('should reject call when WDK not initialized', async () => {
       registerRpcHandlers(mockRpc, context)
 
