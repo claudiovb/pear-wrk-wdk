@@ -82,7 +82,26 @@ const context = {
   },
   protocolManagers: {}, // e.g. AAVE, Uniswap adapters
   requiredNetworks: ['ethereum', 'spark'],
-  wdk: null // Initialized via RPC later
+  wdk: null, // Initialized via RPC later
+
+  // Optional but recommended: without this, callMethod can invoke any method
+  // on the resolved account/protocol object, including fund-moving or
+  // key-export operations. Listing a network or protocol here restricts it
+  // to just the given methods; anything left out stays unrestricted, so you
+  // can lock this down one surface at a time.
+  allowedMethods: {
+    ethereum: {
+      methods: ['getAddress', 'getBalance', 'sendTransaction'],
+      protocols: { swap: { uniswap: { methods: ['quoteSwap'] } } }
+    }
+  },
+
+  // Optional but recommended: without this, callModule can invoke any
+  // method on a bundled module instance (e.g. an address book). Keyed by
+  // module name; a module left out stays unrestricted.
+  allowedModuleMethods: {
+    addressBook: { methods: ['list', 'add'] }
+  }
 }
 
 // Bind the standard WDK RPC handlers to the provided RPC server
@@ -152,6 +171,7 @@ const address = await hrpc.callMethod({
     *   `accountIndex`: The index of the account to use (e.g., `0`).
     *   `args`: Arguments for the method (JSON-stringified).
     *   `options`: Additional options for the method (JSON-stringified).
+    *   By default, `callMethod` can call any method on the resolved account/protocol object, including fund-moving or key-export operations — passing `context.allowedMethods` when registering handlers is optional but recommended to restrict this. See [Context Setup](#1-the-worklet-entry-background-context) above. Restricting is opt-in per network/protocol surface; anything not covered by `allowedMethods` remains unrestricted. A rejected call fails fast with a `METHOD_NOT_ALLOWED` error code, distinct from the `BAD_REQUEST` used when a method genuinely doesn't exist.
 
 ### Dynamic Registration
 *   **`registerWallet(config)`**: Add support for a new blockchain network at runtime.

@@ -193,4 +193,89 @@ describe('module runtime (generic)', () => {
     assert.strictEqual(context.moduleInstances.size, 0, 'all instances cleared')
     assert.strictEqual(instance.closed, true, 'instance.close() called')
   })
+
+  describe('allowedModuleMethods', () => {
+    test('callModule allows any method when allowedModuleMethods is unset (default backward-compatible)', async () => {
+      const { rt } = makeRuntime()
+      await rt.construct('fake', {}, SEED)
+
+      const list = JSON.parse((await rt.callModule({ module: 'fake', method: 'listItems', args: '[]' })).result)
+      assert.deepStrictEqual(list, [])
+    })
+
+    test('callModule rejects a method not in allowedModuleMethods for a restricted module', async () => {
+      const { rt } = makeRuntime({ allowedModuleMethods: { fake: { methods: ['listItems'] } } })
+      await rt.construct('fake', {}, SEED)
+
+      await assert.rejects(
+        () => rt.callModule({ module: 'fake', method: 'addItem', args: JSON.stringify([{ name: 'x' }]) }),
+        /not allowed/
+      )
+    })
+
+    test('callModule allows a method listed in allowedModuleMethods', async () => {
+      const { rt } = makeRuntime({ allowedModuleMethods: { fake: { methods: ['listItems'] } } })
+      await rt.construct('fake', {}, SEED)
+
+      const list = JSON.parse((await rt.callModule({ module: 'fake', method: 'listItems', args: '[]' })).result)
+      assert.deepStrictEqual(list, [])
+    })
+
+    test('callModule fails closed when an allowedModuleMethods entry is malformed (not an array)', async () => {
+      // A bare string instead of an array must not fall through to
+      // String.prototype.includes, which does a substring match — e.g.
+      // 'listItems'.includes('Items') is true.
+      const { rt } = makeRuntime({ allowedModuleMethods: { fake: { methods: 'listItems' } } })
+      await rt.construct('fake', {}, SEED)
+
+      await assert.rejects(
+        () => rt.callModule({ module: 'fake', method: 'Items', args: '[]' }),
+        /not allowed/
+      )
+    })
+
+    test('callModule leaves a module unrestricted when allowedModuleMethods is set but omits that module', async () => {
+      const { rt } = makeRuntime({ allowedModuleMethods: { other: { methods: ['someMethod'] } } })
+      await rt.construct('fake', {}, SEED)
+
+      const list = JSON.parse((await rt.callModule({ module: 'fake', method: 'listItems', args: '[]' })).result)
+      assert.deepStrictEqual(list, [])
+    })
+
+    test('callModule rejects with a distinct METHOD_NOT_ALLOWED code (not the generic "not found" one)', async () => {
+      const { rt } = makeRuntime({ allowedModuleMethods: { fake: { methods: ['listItems'] } } })
+      await rt.construct('fake', {}, SEED)
+
+      await assert.rejects(
+        () => rt.callModule({ module: 'fake', method: 'addItem', args: '[]' }),
+        (error) => {
+          assert.strictEqual(error.code, 'METHOD_NOT_ALLOWED')
+          return true
+        }
+      )
+    })
+
+    test('checking allowedModuleMethods does not construct or await the module instance', async () => {
+      // A denied call should never touch module construction — same rationale
+      // as callWdkMethod's early allowlist gate.
+      const rpc = { moduleEvent: () => {} }
+      let constructed = false
+      const context = {
+        moduleManagers: {
+          fake: {
+            createModule: () => { constructed = true; return new FakeModule({}) }
+          }
+        },
+        capabilities: {},
+        allowedModuleMethods: { fake: { methods: ['listItems'] } }
+      }
+      const rt = createModuleRuntime(rpc, context)
+
+      await assert.rejects(
+        () => rt.callModule({ module: 'fake', method: 'addItem', args: '[]' }),
+        /not allowed/
+      )
+      assert.strictEqual(constructed, false, 'module was never constructed for a denied call')
+    })
+  })
 })

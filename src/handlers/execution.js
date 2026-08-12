@@ -8,6 +8,37 @@ const { validateNonEmptyString, validateNonNegativeInteger, validateJSON, valida
 /** @typedef {import('../../types/rpc').CallMethodOptions} CallMethodOptions */
 /** @typedef {import('../../types/rpc').RpcContext} RpcContext */
 
+const PROTOCOL_ACCESSORS = {
+  swap: 'getSwapProtocol',
+  bridge: 'getBridgeProtocol',
+  lending: 'getLendingProtocol',
+  fiat: 'getFiatProtocol',
+  swidge: 'getSwidgeProtocol'
+}
+
+function isProtocolSurface (options) {
+  return Boolean(options?.protocolType && PROTOCOL_ACCESSORS[options.protocolType] && options?.protocolName)
+}
+
+/**
+ * Whether methodName is permitted for this network/protocol surface. With no
+ * context.allowedMethods (or no entry for this surface), everything is allowed.
+ *
+ * @param {RpcContext} context
+ * @param {string} network
+ * @param {string} methodName
+ * @param {CallMethodOptions} options
+ * @returns {boolean}
+ */
+function isMethodAllowed (context, network, methodName, options) {
+  const allowedForNetwork = context.allowedMethods?.[network]
+  const allowedForSurface = isProtocolSurface(options)
+    ? allowedForNetwork?.protocols?.[options.protocolType]?.[options.protocolName]?.methods
+    : allowedForNetwork?.methods
+
+  return !allowedForSurface || (Array.isArray(allowedForSurface) && allowedForSurface.includes(methodName))
+}
+
 /**
  * @param {CallMethodRequest} payload
  * @param {RpcContext} context
@@ -38,6 +69,13 @@ async function callMethodHandler (payload, context) {
     },
     'Payload'
   )
+
+  if (!isMethodAllowed(context, network, methodName, options)) {
+    throw createErrorWithCode(
+      `Method "${methodName}" is not allowed for network "${network}".`,
+      ERROR_CODES.METHOD_NOT_ALLOWED
+    )
+  }
 
   const result = await callWdkMethod({
     context,
@@ -80,37 +118,12 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
     )
   }
 
-  switch (options?.protocolType) {
-    case 'swap':
-      if (!options?.protocolName) {
-        throw createErrorWithCode('Protocol name is required for swap protocol', ERROR_CODES.BAD_REQUEST)
-      }
-      account = account.getSwapProtocol(options?.protocolName)
-      break
-    case 'swidge':
-      if (!options?.protocolName) {
-        throw createErrorWithCode('Protocol name is required for swidge protocol', ERROR_CODES.BAD_REQUEST)
-      }
-      account = account.getSwidgeProtocol(options?.protocolName)
-      break
-    case 'bridge':
-      if (!options?.protocolName) {
-        throw createErrorWithCode('Protocol name is required for bridge protocol', ERROR_CODES.BAD_REQUEST)
-      }
-      account = account.getBridgeProtocol(options?.protocolName)
-      break
-    case 'lending':
-      if (!options?.protocolName) {
-        throw createErrorWithCode('Protocol name is required for lending protocol', ERROR_CODES.BAD_REQUEST)
-      }
-      account = account.getLendingProtocol(options?.protocolName)
-      break
-    case 'fiat':
-      if (!options?.protocolName) {
-        throw createErrorWithCode('Protocol name is required for fiat protocol', ERROR_CODES.BAD_REQUEST)
-      }
-      account = account.getFiatProtocol(options?.protocolName)
-      break
+  const protocolAccessor = PROTOCOL_ACCESSORS[options?.protocolType]
+  if (protocolAccessor) {
+    if (!options?.protocolName) {
+      throw createErrorWithCode(`Protocol name is required for ${options.protocolType} protocol`, ERROR_CODES.BAD_REQUEST)
+    }
+    account = account[protocolAccessor](options.protocolName)
   }
 
   if (typeof account[methodName] !== 'function') {
@@ -119,12 +132,8 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
       return options.defaultValue
     }
 
-    const availableMethods = Object.keys(account)
-      .filter(key => typeof account[key] === 'function')
-      .join(', ')
     throw createErrorWithCode(
-      `Method "${methodName}" not found on account for network "${network}". ` +
-      `Available methods: ${availableMethods}`,
+      `Method "${methodName}" not found on account for network "${network}".`,
       ERROR_CODES.BAD_REQUEST
     )
   }

@@ -125,6 +125,14 @@ function createModuleRuntime (rpc, context) {
       'callModule'
     )
 
+    const allowedForModule = context.allowedModuleMethods?.[req.module]?.methods
+    if (allowedForModule && !(Array.isArray(allowedForModule) && allowedForModule.includes(req.method))) {
+      throw createErrorWithCode(
+        `Method "${req.method}" is not allowed for module "${req.module}".`,
+        ERROR_CODES.METHOD_NOT_ALLOWED
+      )
+    }
+
     const entry = instances.get(req.module)
     if (entry && entry.error) {
       throw createErrorWithCode(
