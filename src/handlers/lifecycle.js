@@ -2,7 +2,7 @@ const ERROR_CODES = require('../exceptions/error-codes')
 const { decrypt, memzero } = require('../utils/crypto')
 const logger = require('../utils/logger')
 const {
-  validateBase64,
+  validateBuffer,
   validateJSON,
   validateNonEmptyString,
   validateRequest,
@@ -81,8 +81,8 @@ async function initializeWdkHandler (init, context) {
       }
 
       if (init.encryptedSeed && init.encryptionKey) {
-        validateBase64(init.encryptionKey, 'encryptionKey')
-        validateBase64(init.encryptedSeed, 'encryptedSeed')
+        validateBuffer(init.encryptionKey, 'encryptionKey')
+        validateBuffer(init.encryptedSeed, 'encryptedSeed')
       }
     },
     'Init'
@@ -105,7 +105,23 @@ async function initializeWdkHandler (init, context) {
     let decryptedSeedBuffer
     try {
       decryptedSeedBuffer = decrypt(init.encryptedSeed, init.encryptionKey)
+    } catch (error) {
+      memzero(init.encryptedSeed)
+      memzero(init.encryptionKey)
+      throw createErrorWithCode(
+        `Failed to decrypt seed: ${error.message}`,
+        ERROR_CODES.BAD_REQUEST
+      )
+    }
 
+    // decrypt() doesn't touch encryptedSeed/encryptionKey — they're the raw
+    // request buffers we own as the sole consumer of this inbound RPC
+    // call, so we zero them here once no longer needed, on both the
+    // success and failure path.
+    memzero(init.encryptedSeed)
+    memzero(init.encryptionKey)
+
+    try {
       // Construct seed-bound modules before WDK takes the buffer; factories consume
       // the seed synchronously — the same buffer the wallet uses, never copied or retained.
       if (workletConfig.modules && Object.keys(workletConfig.modules).length > 0) {
@@ -118,12 +134,6 @@ async function initializeWdkHandler (init, context) {
 
       context.wdk = new WDK(decryptedSeedBuffer)
     } catch (error) {
-      if (!decryptedSeedBuffer) {
-        throw createErrorWithCode(
-          `Failed to decrypt seed: ${error.message}`,
-          ERROR_CODES.BAD_REQUEST
-        )
-      }
       // Decrypt succeeded but a later step failed so decryptedSeedBuffer must be wiped
       memzero(decryptedSeedBuffer)
       throw error

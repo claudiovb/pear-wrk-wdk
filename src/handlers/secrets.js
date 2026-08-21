@@ -1,6 +1,6 @@
 const { entropyToMnemonic, mnemonicToSeedSync, mnemonicToEntropy } = require('@scure/bip39')
 const { wordlist } = require('@scure/bip39/wordlists/english.js')
-const { validateRequest, validateBase64, validateMnemonic, validateWordCount } = require('../utils/validation')
+const { validateRequest, validateBuffer, validateMnemonic, validateWordCount } = require('../utils/validation')
 const { memzero, decrypt, generateEntropy, encryptSecrets } = require('../utils/crypto')
 
 /** @typedef {import('../../types/rpc').WdkGenerateEntropyParams} WdkGenerateEntropyParams */
@@ -9,9 +9,12 @@ const { memzero, decrypt, generateEntropy, encryptSecrets } = require('../utils/
 
 /**
  * @param {WdkGenerateEntropyParams} request
- * @returns {Promise<WdkEntropyResult>} All three returned values are strings and
- *   cannot be zeroed — see encryptSecrets. The intermediate mnemonic string
- *   generated internally also cannot be zeroed.
+ * @returns {Promise<WdkEntropyResult>} encryptionKey, encryptedSeedBuffer,
+ *   and encryptedEntropyBuffer are all Buffers — see encryptSecrets. Not
+ *   yet zeroed after this handler returns (no plumbing exists yet to zero
+ *   them once the RPC response has been sent — a known, deferred gap).
+ *   The intermediate mnemonic string generated internally still cannot be
+ *   zeroed (JS strings are immutable).
  */
 async function generateEntropyAndEncryptHandler (request) {
   const { wordCount } = request
@@ -28,6 +31,11 @@ async function generateEntropyAndEncryptHandler (request) {
   const { encryptionKey, encryptedSeedBuffer, encryptedEntropyBuffer } =
     encryptSecrets(seedBuffer, entropyBuffer)
 
+  // encryptSecrets() only zeroes an internal copy it made itself —
+  // seedBuffer and entropyBuffer are ours, so we're responsible for
+  // zeroing them here.
+  memzero(seedBuffer)
+  memzero(entropyBuffer)
   memzero(entropy)
 
   return {
@@ -47,8 +55,8 @@ async function getMnemonicFromEntropyHandler (request) {
   const { encryptedEntropy, encryptionKey } = request
 
   validateRequest(request, () => {
-    validateBase64(encryptedEntropy, 'encryptedEntropy')
-    validateBase64(encryptionKey, 'encryptionKey')
+    validateBuffer(encryptedEntropy, 'encryptedEntropy')
+    validateBuffer(encryptionKey, 'encryptionKey')
   })
 
   const entropyBuffer = decrypt(encryptedEntropy, encryptionKey)
@@ -59,7 +67,12 @@ async function getMnemonicFromEntropyHandler (request) {
 
   const mnemonic = entropyToMnemonic(entropy, wordlist)
 
-  // Important: Zero out sensitive buffers
+  // Important: Zero out sensitive buffers. decrypt() doesn't touch
+  // encryptedEntropy/encryptionKey — they're the raw request buffers we
+  // own as the sole consumer of this inbound RPC call, so we zero them
+  // here once no longer needed.
+  memzero(encryptedEntropy)
+  memzero(encryptionKey)
   memzero(entropyBuffer)
   memzero(entropy)
 
@@ -73,8 +86,10 @@ async function getMnemonicFromEntropyHandler (request) {
  * @param {object} request - The RPC request object
  * @param {string} request.mnemonic - BIP39 mnemonic phrase (12 or 24 words).
  *   As a JS string, it cannot be zeroed and remains in the V8 heap after this call.
- * @returns {Promise<WdkEntropyResult>} Encrypted seed and entropy with encryption key.
- *   All three returned values are strings and cannot be zeroed — see encryptSecrets.
+ * @returns {Promise<WdkEntropyResult>} Encrypted seed and entropy with
+ *   encryption key — all three are Buffers now. Not yet zeroed after this
+ *   handler returns (same deferred gap as generateEntropyAndEncryptHandler
+ *   — no plumbing exists yet to zero them once the RPC response is sent).
  */
 async function getSeedAndEntropyFromMnemonicHandler (request) {
   const { mnemonic } = request
@@ -90,7 +105,14 @@ async function getSeedAndEntropyFromMnemonicHandler (request) {
     throw err
   }
 
-  return encryptSecrets(seed, entropy)
+  const result = encryptSecrets(seed, entropy)
+
+  // encryptSecrets() only zeroes an internal copy it made itself — seed
+  // and entropy are ours, so we're responsible for zeroing them here.
+  memzero(seed)
+  memzero(entropy)
+
+  return result
 }
 
 module.exports = {
