@@ -1,4 +1,4 @@
-const { generateEntropyAndEncryptHandler, getMnemonicFromEntropyHandler, getSeedAndEntropyFromMnemonicHandler, initializeWdkHandler, disposeWdkHandler, registerWalletHandler, registerProtocolHandler, callMethodHandler } = require('./handlers')
+const { generateEntropyAndEncryptHandler, getMnemonicFromEntropyHandler, getSeedAndEntropyFromMnemonicHandler, initializeWdkHandler, disposeWdkHandler, registerWalletHandler, registerProtocolHandler, callMethodHandler, createModuleRuntime } = require('./handlers')
 const rpcException = require('./exceptions/rpc-exception')
 const { safeStringify } = require('./utils/safe-stringify')
 
@@ -45,6 +45,37 @@ function registerJsonRpcHandlers (ipc, context) {
     const length = Buffer.allocUnsafe(4)
     length.writeUInt32BE(data.length, 0)
     ipc.write(Buffer.concat([length, data]))
+  }
+
+  let moduleRuntime = null
+  if (context.moduleManagers && Object.keys(context.moduleManagers).length > 0) {
+    const moduleEventTransport = {
+      moduleEvent: (event) => {
+        let payload = null
+        if (event.payload != null) {
+          try {
+            payload = JSON.parse(event.payload)
+          } catch (error) {
+            logger.error('moduleEvent payload is not valid JSON; forwarding it as a string:', error)
+            payload = event.payload
+          }
+        }
+
+        const notification = safeStringify({
+          jsonrpc: '2.0',
+          method: 'moduleEvent',
+          params: {
+            module: event.module,
+            event: event.event,
+            payload
+          }
+        })
+        writeFramed(Buffer.from(notification))
+      }
+    }
+
+    moduleRuntime = createModuleRuntime(moduleEventTransport, context)
+    context.moduleRuntime = moduleRuntime
   }
 
   function processFramedData (chunk) {
@@ -104,7 +135,7 @@ function registerJsonRpcHandlers (ipc, context) {
 
     try {
       let result
-      logger.info(`JSON-RPC request: ${method}`, params)
+      logger.info(`JSON-RPC request: ${method}`)
 
       switch (method) {
         case 'workletStart':
@@ -152,6 +183,35 @@ function registerJsonRpcHandlers (ipc, context) {
           break
         }
 
+        case 'callModule': {
+          if (!moduleRuntime) {
+            const error = new Error('No modules are bundled in this worklet')
+            error.code = ERROR_CODES.BAD_REQUEST
+            throw error
+          }
+
+          const callResult = await withErrorHandling(moduleRuntime.callModule)(params)
+          // The shared module runtime returns a JSON string for HRPC. JSON-RPC
+          // carries the value directly, matching callMethod above.
+          try {
+            result = { result: JSON.parse(callResult.result) }
+          } catch (e) {
+            logger.error('callModule result is not valid JSON, returning error response:', e)
+            const response = safeStringify({
+              jsonrpc: '2.0',
+              id,
+              error: {
+                message: 'callModule result could not be serialized as JSON',
+                code: ERROR_CODES.INTERNAL_ERROR,
+                data: { result: callResult.result }
+              }
+            })
+            writeFramed(Buffer.from(response))
+            return
+          }
+          break
+        }
+
         case 'registerWallet':
           result = await withErrorHandling(withContext(registerWalletHandler))(params)
           break
@@ -168,7 +228,7 @@ function registerJsonRpcHandlers (ipc, context) {
           throw new Error(`Unknown method: ${method}`)
       }
 
-      logger.info(`JSON-RPC response: ${method}`, result)
+      logger.info(`JSON-RPC response: ${method}`)
 
       const response = safeStringify({
         jsonrpc: '2.0',
@@ -177,7 +237,7 @@ function registerJsonRpcHandlers (ipc, context) {
       })
       writeFramed(Buffer.from(response))
     } catch (error) {
-      logger.error(`JSON-RPC error: ${method}`, error)
+      logger.error(`JSON-RPC error: ${method}`)
 
       let errorResponse
       try {

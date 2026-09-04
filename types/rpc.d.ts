@@ -158,9 +158,6 @@ export interface CallMethodOptions {
   // Optional function to transform the result
   transformResult: Function;
 
-  // Default value to return if method doesn't exist
-  defaultValue: any;
-
   // Protocol type (e.g., 'swap', 'swidge', 'bridge', 'lending', 'fiat')
   protocolType: ProtocolType;
 

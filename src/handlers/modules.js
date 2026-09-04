@@ -19,7 +19,7 @@ const {
  * Generic, module-agnostic runtime for bundled WDK modules. Modules are built from
  * config at WDK init via context.moduleManagers, then driven by the host over IPC.
  *
- * @param {ModuleEventEmitter} rpc - HRPC instance (used to emit moduleEvent)
+ * @param {ModuleEventEmitter} rpc - Transport adapter used to emit moduleEvent
  * @param {RpcContext} context - Shared context (moduleManagers, capabilities)
  */
 function createModuleRuntime (rpc, context) {

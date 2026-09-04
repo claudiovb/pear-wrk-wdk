@@ -229,25 +229,31 @@ describe('RPC Handlers', () => {
       )
     })
 
-    test('should reject mnemonic with a non-BIP39 word', async () => {
+    test('should reject mnemonic with a non-BIP39 word, reporting position but never the word text', async () => {
       registerRpcHandlers(mockRpc, context)
 
       await assert.rejects(
         async () => await mockRpc.handlers.getSeedAndEntropyFromMnemonic({
           mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon notaword'
         }),
-        /contains words not in the BIP-39 wordlist.*notaword.*position 12/
+        (error) => {
+          const message = error.message || String(error)
+          return message.includes('position(s): 12') && !message.includes('notaword')
+        }
       )
     })
 
-    test('should reject mnemonic with multiple non-BIP39 words', async () => {
+    test('should reject mnemonic with multiple non-BIP39 words, reporting positions but never the word text', async () => {
       registerRpcHandlers(mockRpc, context)
 
       await assert.rejects(
         async () => await mockRpc.handlers.getSeedAndEntropyFromMnemonic({
           mnemonic: 'abandon typo1 abandon abandon abandon abandon abandon abandon abandon abandon abandon typo2'
         }),
-        /contains words not in the BIP-39 wordlist.*typo1.*position 2.*typo2.*position 12/
+        (error) => {
+          const message = error.message || String(error)
+          return message.includes('position(s): 2, 12') && !message.includes('typo1') && !message.includes('typo2')
+        }
       )
     })
 
@@ -536,7 +542,7 @@ describe('RPC Handlers', () => {
       )
     })
 
-    test('should reject invalid method name', async () => {
+    test('should reject invalid method name even when options include a legacy defaultValue', async () => {
       registerRpcHandlers(mockRpc, context)
 
       const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
@@ -557,7 +563,8 @@ describe('RPC Handlers', () => {
         async () => await mockRpc.handlers.callMethod({
           methodName: 'nonExistentMethod',
           network: 'ethereum',
-          accountIndex: 0
+          accountIndex: 0,
+          options: JSON.stringify({ defaultValue: 'fallback' })
         }),
         /Method.*not found/
       )

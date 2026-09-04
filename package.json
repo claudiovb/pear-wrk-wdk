@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/pear-wrk-wdk",
-  "version": "1.0.0-beta.11",
+  "version": "1.0.0-beta.13",
   "main": "index.js",
   "scripts": {
     "build:types": "tsc --noEmit",
@@ -27,6 +27,9 @@
     "hrpc": "^4.0.1",
     "hyperschema": "^1.12.4"
   },
+  "optionalDependencies": {
+    "bare-walk-handles": "^2.0.10"
+  },
   "devDependencies": {
     "bare-ipc": "^1.1.1",
     "rimraf": "6.0.1",
@@ -41,6 +44,10 @@
     "./worklet": {
       "types": "./types/index.d.ts",
       "default": "./worklet.js"
+    },
+    "./diagnostics/handle-leak-check": {
+      "types": "./types/diagnostics/handle-leak-check.d.ts",
+      "default": "./src/diagnostics/handle-leak-check.js"
     },
     "./jsonrpc": {
       "types": "./types/jsonrpc.d.ts",

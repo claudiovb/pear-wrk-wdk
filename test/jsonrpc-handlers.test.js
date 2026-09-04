@@ -92,6 +92,24 @@ function createContext () {
   }
 }
 
+class FakeModule extends EventEmitter {
+  constructor () {
+    super()
+    this.items = []
+  }
+
+  addItem (input) {
+    const item = { id: String(this.items.length + 1), ...input }
+    this.items.push(item)
+    this.emit('update', { count: this.items.length, item })
+    return item
+  }
+
+  listItems () {
+    return this.items.slice()
+  }
+}
+
 async function waitForResponse (ipc, expectedCount) {
   const start = Date.now()
   while (ipc.getWritten().length < expectedCount) {
@@ -287,6 +305,24 @@ describe('JSON-RPC Transport', () => {
       assert.ok(resp.result.result.address)
     })
 
+    test('callMethod enforces allowedMethods over JSON-RPC', async () => {
+      context.allowedMethods = { ethereum: { methods: ['getAddress'] } }
+      context.wdk = new context.WDK(Buffer.alloc(32))
+      context.wdk.registerWallet('ethereum', context.walletManagers.ethereum, {})
+
+      ipc.emit('data', frameMessage({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'callMethod',
+        params: { methodName: 'getBalance', network: 'ethereum', accountIndex: 0 }
+      }))
+      await waitForResponse(ipc, 1)
+
+      const resp = ipc.getLastResponse()
+      assert.strictEqual(resp.error.code, 'METHOD_NOT_ALLOWED')
+      assert.match(resp.error.message, /not allowed/)
+    })
+
     test('dispose clears WDK instance', async () => {
       const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
       ipc.emit('data', frameMessage({ jsonrpc: '2.0', id: 1, method: 'getSeedAndEntropyFromMnemonic', params: { mnemonic } }))
@@ -382,6 +418,93 @@ describe('JSON-RPC Transport', () => {
     })
   })
 
+  describe('generic modules', () => {
+    beforeEach(() => {
+      ipc = createMockIpc()
+      context = createContext()
+      context.moduleManagers = {
+        fake: {
+          events: ['update'],
+          createModule: () => new FakeModule()
+        }
+      }
+      registerJsonRpcHandlers(ipc, context)
+    })
+
+    async function initializeModules () {
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      ipc.emit('data', frameMessage({ jsonrpc: '2.0', id: 1, method: 'getSeedAndEntropyFromMnemonic', params: { mnemonic } }))
+      await waitForResponse(ipc, 1)
+      const seedData = ipc.getLastResponse().result
+
+      const config = {
+        networks: {
+          ethereum: { blockchain: 'ethereum', config: {} }
+        },
+        modules: {
+          fake: { namespace: 'jsonrpc-test' }
+        }
+      }
+      ipc.emit('data', frameMessage({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'initializeWDK',
+        params: {
+          config: JSON.stringify(config),
+          encryptionKey: seedData.encryptionKey,
+          encryptedSeed: seedData.encryptedSeedBuffer
+        }
+      }))
+      await waitForResponse(ipc, 2)
+      assert.strictEqual(ipc.getLastResponse().result.status, 'initialized')
+    }
+
+    test('callModule returns the module result and sends moduleEvent as a JSON-RPC notification', async () => {
+      await initializeModules()
+
+      ipc.emit('data', frameMessage({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'callModule',
+        params: { module: 'fake', method: 'addItem', args: JSON.stringify([{ name: 'alpha' }]) }
+      }))
+      await waitForResponse(ipc, 4)
+
+      const messages = ipc.getAllResponses()
+      const notification = messages.find((message) => message.method === 'moduleEvent')
+      const response = messages.find((message) => message.id === 3)
+
+      assert.deepStrictEqual(response.result.result, { id: '1', name: 'alpha' })
+      assert.strictEqual(notification.jsonrpc, '2.0')
+      assert.strictEqual(notification.id, undefined, 'notifications must not carry a request id')
+      assert.deepStrictEqual(notification.params, {
+        module: 'fake',
+        event: 'update',
+        payload: { count: 1, item: { id: '1', name: 'alpha' } }
+      })
+
+      const raw = ipc.getWritten()[messages.indexOf(notification)]
+      assert.strictEqual(raw.length, 4 + raw.readUInt32BE(0), 'notification frame length should match header')
+    })
+
+    test('callModule enforces allowedModuleMethods over JSON-RPC', async () => {
+      context.allowedModuleMethods = { fake: { methods: ['listItems'] } }
+      await initializeModules()
+
+      ipc.emit('data', frameMessage({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'callModule',
+        params: { module: 'fake', method: 'addItem', args: '[]' }
+      }))
+      await waitForResponse(ipc, 3)
+
+      const resp = ipc.getLastResponse()
+      assert.strictEqual(resp.error.code, 'METHOD_NOT_ALLOWED')
+      assert.match(resp.error.message, /not allowed/)
+    })
+  })
+
   describe('error formatting', () => {
     test('unknown method returns error with INTERNAL_ERROR code', async () => {
       ipc.emit('data', frameMessage({ jsonrpc: '2.0', id: 99, method: 'nonExistent', params: {} }))
@@ -421,6 +544,20 @@ describe('JSON-RPC Transport', () => {
       const resp = ipc.getLastResponse()
       assert.ok(resp.error)
       assert.ok(resp.error.message.includes('WDK not initialized'))
+    })
+
+    test('callModule without bundled modules returns a BAD_REQUEST error', async () => {
+      ipc.emit('data', frameMessage({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'callModule',
+        params: { module: 'missing', method: 'listItems', args: '[]' }
+      }))
+      await waitForResponse(ipc, 1)
+
+      const resp = ipc.getLastResponse()
+      assert.strictEqual(resp.error.code, 'BAD_REQUEST')
+      assert.match(resp.error.message, /No modules are bundled/)
     })
 
     test('error response includes jsonrpc 2.0 and correct id', async () => {

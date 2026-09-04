@@ -101,8 +101,11 @@ function validateMnemonic (value, fieldName) {
     .filter(({ word }) => !bip39WordlistSet.has(word))
 
   if (invalid.length > 0) {
-    const details = invalid.map(({ word, position }) => `"${word}" at position ${position}`).join(', ')
-    throw new Error(`${fieldName} contains words not in the BIP-39 wordlist: ${details}`)
+    // Report position only, never the word text — this message can end up
+    // in an RPC error response and in logs, and the word itself may be a
+    // near-miss typo of a real seed-phrase word.
+    const positions = invalid.map(({ position }) => position).join(', ')
+    throw new Error(`${fieldName} contains ${invalid.length} word(s) not in the BIP-39 wordlist (position(s): ${positions})`)
   }
 }
 
