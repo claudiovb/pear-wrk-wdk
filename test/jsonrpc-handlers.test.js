@@ -108,6 +108,14 @@ class FakeModule extends EventEmitter {
   listItems () {
     return this.items.slice()
   }
+
+  clear () {
+    this.items = []
+  }
+
+  async clearAsync () {
+    this.clear()
+  }
 }
 
 async function waitForResponse (ipc, expectedCount) {
@@ -486,6 +494,28 @@ describe('JSON-RPC Transport', () => {
       const raw = ipc.getWritten()[messages.indexOf(notification)]
       assert.strictEqual(raw.length, 4 + raw.readUInt32BE(0), 'notification frame length should match header')
     })
+
+    for (const method of ['clear', 'clearAsync']) {
+      test(`callModule returns null for a void ${method} method over JSON-RPC`, async () => {
+        await initializeModules()
+        const instance = context.moduleInstances.get('fake').instance
+        instance.addItem({ name: 'alpha' })
+        const responseCount = ipc.getWritten().length + 1
+
+        ipc.emit('data', frameMessage({
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'callModule',
+          params: { module: 'fake', method, args: '[]' }
+        }))
+        await waitForResponse(ipc, responseCount)
+
+        assert.deepStrictEqual(ipc.getLastResponse(), {
+          jsonrpc: '2.0', id: 3, result: { result: null }
+        })
+        assert.deepStrictEqual(instance.listItems(), [])
+      })
+    }
 
     test('callModule enforces allowedModuleMethods over JSON-RPC', async () => {
       context.allowedModuleMethods = { fake: { methods: ['listItems'] } }
