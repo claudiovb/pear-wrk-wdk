@@ -166,10 +166,6 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
   const argsArray = Array.isArray(args) ? args : (args !== null && args !== undefined ? [args] : [])
   const result = await account[methodName](...argsArray)
 
-  if (options?.transformResult) {
-    return options.transformResult(result)
-  }
-
   return result
 }
 

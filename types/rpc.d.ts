@@ -155,9 +155,6 @@ export interface CallMethodResponse {
 }
 
 export interface CallMethodOptions {
-  // Optional function to transform the result
-  transformResult: Function;
-
   // Protocol type (e.g., 'swap', 'swidge', 'bridge', 'lending', 'fiat')
   protocolType: ProtocolType;
 
