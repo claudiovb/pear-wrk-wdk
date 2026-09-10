@@ -77,8 +77,8 @@ function validateJSON (value, fieldName) {
 
   try {
     return JSON.parse(value)
-  } catch (error) {
-    throw new Error(`${fieldName} must be valid JSON: ${error.message}`)
+  } catch {
+    throw new Error(`${fieldName} must be valid JSON`)
   }
 }
 
