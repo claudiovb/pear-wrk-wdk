@@ -428,6 +428,26 @@ describe('RPC Handlers', () => {
   })
 
   describe('callMethod', () => {
+    test('should ignore serialized legacy transformResult values', async () => {
+      context.wdk = {
+        async getAccount () {
+          return { async getBalance () { return { balance: '123' } } }
+        },
+        dispose () {}
+      }
+      registerRpcHandlers(mockRpc, context)
+
+      for (const transformResult of [true, 'legacy', { expression: 'result.balance' }]) {
+        const result = await mockRpc.handlers.callMethod({
+          methodName: 'getBalance',
+          network: 'ethereum',
+          accountIndex: 0,
+          options: JSON.stringify({ transformResult })
+        })
+        assert.deepStrictEqual(JSON.parse(result.result), { balance: '123' })
+      }
+    })
+
     test('should call WDK method successfully', async () => {
       registerRpcHandlers(mockRpc, context)
 
