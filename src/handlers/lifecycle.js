@@ -1,5 +1,5 @@
 const ERROR_CODES = require('../exceptions/error-codes')
-const { decrypt } = require('../utils/crypto')
+const { decrypt, memzero } = require('../utils/crypto')
 const logger = require('../utils/logger')
 const {
   validateBase64,
@@ -13,6 +13,20 @@ const {
 /** @typedef {import('../../types/rpc').WdkResetWalletParams} WdkResetWalletParams */
 /** @typedef {import('../../types/rpc').RpcContext} RpcContext */
 /** @typedef {import('../../types/rpc').WdkWorkletConfig} WdkWorkletConfig */
+
+/**
+ * Zero and release the retained WDK seed buffer, if any.
+ * WDK never zeroes the seed it was constructed with, so this is the only
+ * place that ever scrubs it.
+ * @param {RpcContext} context
+ */
+function releaseWdkSeedBuffer (context) {
+  if (!context.wdkSeedBuffer) return
+  memzero(context.wdkSeedBuffer)
+  // Clear the reference to the buffer, not just zero out the bytes, so `wdkSeedBuffer` check stays
+  // truthy iff a live seed-backed WDK instance exists.
+  context.wdkSeedBuffer = null
+}
 
 /**
  *
@@ -43,6 +57,10 @@ async function initializeWdkHandler (init, context) {
     // Close hosted modules too, so they reconstruct with the new seed below.
     if (context.moduleRuntime) await context.moduleRuntime.closeAll()
     wdk.dispose()
+    // Wipe only when replacing the seed; config-only re-init reuses it.
+    if (init.encryptedSeed && init.encryptionKey) {
+      releaseWdkSeedBuffer(context)
+    }
   }
 
   /** @type {WdkWorkletConfig} */
@@ -87,24 +105,31 @@ async function initializeWdkHandler (init, context) {
     let decryptedSeedBuffer
     try {
       decryptedSeedBuffer = decrypt(init.encryptedSeed, init.encryptionKey)
-    } catch (error) {
-      throw createErrorWithCode(
-        `Failed to decrypt seed: ${error.message}`,
-        ERROR_CODES.BAD_REQUEST
-      )
-    }
 
-    // Construct seed-bound modules before WDK takes the buffer; factories consume
-    // the seed synchronously — the same buffer the wallet uses, never copied or retained.
-    if (workletConfig.modules && Object.keys(workletConfig.modules).length > 0) {
-      if (context.moduleRuntime) {
-        context.moduleRuntime.constructFromConfig(workletConfig.modules, decryptedSeedBuffer)
-      } else {
-        logger.warn('Modules configured but none bundled (no module runtime); skipping')
+      // Construct seed-bound modules before WDK takes the buffer; factories consume
+      // the seed synchronously — the same buffer the wallet uses, never copied or retained.
+      if (workletConfig.modules && Object.keys(workletConfig.modules).length > 0) {
+        if (context.moduleRuntime) {
+          context.moduleRuntime.constructFromConfig(workletConfig.modules, decryptedSeedBuffer)
+        } else {
+          logger.warn('Modules configured but none bundled (no module runtime); skipping')
+        }
       }
+
+      context.wdk = new WDK(decryptedSeedBuffer)
+    } catch (error) {
+      if (!decryptedSeedBuffer) {
+        throw createErrorWithCode(
+          `Failed to decrypt seed: ${error.message}`,
+          ERROR_CODES.BAD_REQUEST
+        )
+      }
+      // Decrypt succeeded but a later step failed so decryptedSeedBuffer must be wiped
+      memzero(decryptedSeedBuffer)
+      throw error
     }
 
-    context.wdk = new WDK(decryptedSeedBuffer)
+    context.wdkSeedBuffer = decryptedSeedBuffer
   }
 
   if (!context.wdk) {
@@ -267,14 +292,23 @@ async function disposeWdkHandler (request, context) {
     await context.moduleRuntime.closeAll()
   }
 
-  if (context.wdk) {
-    if (blockchains) {
-      context.wdk.dispose(blockchains)
-    } else {
+  if (!context.wdk) {
+    return { status: 'disposed' }
+  }
+
+  if (blockchains) {
+    context.wdk.dispose(blockchains)
+  } else {
+    try {
       context.wdk.dispose()
+    } finally {
+      // Even if dispose() throws, don't leave a half-torn-down wdk in
+      // place or the seed buffer unwiped.
       context.wdk = null
+      releaseWdkSeedBuffer(context)
     }
   }
+
   logger.info('WDK disposed', blockchains || 'all')
   return { status: 'disposed' }
 }

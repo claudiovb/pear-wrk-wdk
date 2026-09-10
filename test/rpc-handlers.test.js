@@ -888,5 +888,111 @@ describe('RPC Handlers', () => {
       assert.strictEqual(context.moduleInstances.size, 0, 'module instances cleared')
       assert.strictEqual(context.wdk, null, 'WDK disposed')
     })
+
+    test('dispose (full) zeroes the retained seed buffer', async () => {
+      registerRpcHandlers(mockRpc, context)
+
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = {
+        networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } }
+      }
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData.encryptionKey,
+        encryptedSeed: seedData.encryptedSeedBuffer
+      })
+
+      const seedBuffer = context.wdkSeedBuffer
+      assert.ok(Buffer.isBuffer(seedBuffer), 'seed buffer should be retained on context')
+      assert.ok(seedBuffer.some(byte => byte !== 0), 'seed buffer should hold real data before dispose')
+
+      await mockRpc.handlers.dispose()
+
+      assert.strictEqual(context.wdkSeedBuffer, null, 'seed buffer reference cleared on full dispose')
+      assert.ok(seedBuffer.every(byte => byte === 0), 'seed buffer zeroed on full dispose')
+    })
+
+    test('dispose (targeted, per-blockchain) does not zero the seed buffer', async () => {
+      registerRpcHandlers(mockRpc, context)
+
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = {
+        networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } }
+      }
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData.encryptionKey,
+        encryptedSeed: seedData.encryptedSeedBuffer
+      })
+
+      const original = Buffer.from(context.wdkSeedBuffer)
+
+      await mockRpc.handlers.dispose({ blockchains: ['ethereum'] })
+
+      assert.ok(context.wdkSeedBuffer, 'seed buffer stays retained — wallet is still running')
+      assert.deepStrictEqual(context.wdkSeedBuffer, original, 'seed buffer left untouched on a targeted dispose')
+    })
+
+    test('config-only re-init does not zero the seed the existing WDK instance still holds', async () => {
+      registerRpcHandlers(mockRpc, context)
+
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const config = {
+        networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } }
+      }
+
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData.encryptionKey,
+        encryptedSeed: seedData.encryptedSeedBuffer
+      })
+
+      const wdkInstance = context.wdk
+      const seedBuffer = context.wdkSeedBuffer
+      const original = Buffer.from(seedBuffer)
+      assert.ok(original.some(byte => byte !== 0), 'seed buffer should hold real data before re-init')
+
+      const result = await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config)
+      })
+
+      assert.strictEqual(result.status, 'initialized')
+      assert.strictEqual(context.wdk, wdkInstance, 'same WDK instance reused — no new seed was provided')
+      assert.strictEqual(context.wdkSeedBuffer, seedBuffer, 'same retained seed buffer')
+      assert.deepStrictEqual(seedBuffer, original, 'seed bytes not wiped on config-only re-init')
+      assert.deepStrictEqual(context.wdk.seed, original, 'WDK still holds the live seed (same buffer, not zeros)')
+      assert.ok(context.wdk.wallets.ethereum, 'wallets re-registered after dispose')
+    })
+
+    test('re-init zeroes the previous seed buffer', async () => {
+      registerRpcHandlers(mockRpc, context)
+
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const config = {
+        networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } }
+      }
+
+      const seedData1 = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData1.encryptionKey,
+        encryptedSeed: seedData1.encryptedSeedBuffer
+      })
+      const firstSeedBuffer = context.wdkSeedBuffer
+      assert.ok(firstSeedBuffer.some(byte => byte !== 0), 'first seed buffer should hold real data')
+
+      const seedData2 = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData2.encryptionKey,
+        encryptedSeed: seedData2.encryptedSeedBuffer
+      })
+
+      assert.ok(firstSeedBuffer.every(byte => byte === 0), 'previous seed buffer zeroed on re-init')
+      assert.notStrictEqual(context.wdkSeedBuffer, firstSeedBuffer, 'context now holds the new seed buffer')
+    })
   })
 })
