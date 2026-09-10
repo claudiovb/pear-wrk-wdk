@@ -155,7 +155,7 @@ function createModuleRuntime (rpc, context) {
     const argsArray = Array.isArray(args) ? args : (args !== null && args !== undefined ? [args] : [])
     let result = await fn.apply(instance, argsArray)
     result = await materialize(result) // stream / async-iterable -> array
-    return { result: safeStringify(normalize(result)) } // Buffer/Uint8Array -> hex
+    return { result: safeStringify(normalize(result ?? null)) } // Buffer/Uint8Array -> hex
   }
 
   // Close every hosted module (WDK dispose / lock).
