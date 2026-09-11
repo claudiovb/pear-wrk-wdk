@@ -9,6 +9,8 @@
  * its compact binary encoding carries these fields as real Buffers
  * end-to-end, with no string step at all.
  */
+const { memzero } = require('./crypto')
+
 const BUFFER_FIELDS = ['encryptionKey', 'encryptedSeed', 'encryptedEntropy', 'encryptedSeedBuffer', 'encryptedEntropyBuffer']
 
 /**
@@ -30,14 +32,17 @@ function decodeBufferFields (obj) {
 /**
  * Encode known buffer-typed fields from real Buffers into base64 strings,
  * in place. Used on outgoing JSON-RPC results before JSON-serializing them.
+ * Zeroes each original Buffer once it's been encoded.
  * @param {object} obj - Object to encode (e.g. a handler's return value)
  * @returns {object} The same object, mutated in place
  */
 function encodeBufferFields (obj) {
   if (!obj || typeof obj !== 'object') return obj
   for (const field of BUFFER_FIELDS) {
-    if (Buffer.isBuffer(obj[field])) {
-      obj[field] = obj[field].toString('base64')
+    const buffer = obj[field]
+    if (Buffer.isBuffer(buffer)) {
+      obj[field] = buffer.toString('base64')
+      memzero(buffer)
     }
   }
   return obj
