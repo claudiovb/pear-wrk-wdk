@@ -84,12 +84,9 @@ test('module subsystem over real HRPC: call / event', async () => {
   const listRes = await hostRpc.callModule({ module: 'fake', method: 'listItems', args: JSON.stringify([]) })
   assert.strictEqual(JSON.parse(listRes.result).length, 1, 'listItems over real HRPC')
 
-  // void-returning method round-trips as an absent result over real HRPC
+  // Void methods use the same JSON null result as the JSON-RPC transport.
   const clearRes = await hostRpc.callModule({ module: 'fake', method: 'clear', args: JSON.stringify([]) })
-  assert.ok(
-    clearRes.result === undefined || clearRes.result === null || clearRes.result === '',
-    'void method returns no result over real HRPC'
-  )
+  assert.strictEqual(clearRes.result, 'null', 'void method returns serialized null over real HRPC')
   const afterClear = JSON.parse((await hostRpc.callModule({ module: 'fake', method: 'listItems', args: JSON.stringify([]) })).result)
   assert.strictEqual(afterClear.length, 0, 'clear() (void) round-tripped and emptied items')
 
