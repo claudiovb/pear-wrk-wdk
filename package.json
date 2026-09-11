@@ -28,7 +28,7 @@
     "hyperschema": "^1.12.4"
   },
   "optionalDependencies": {
-    "bare-walk-handles": "^2.0.10"
+    "bare-walk-handles": "^2.1.0"
   },
   "devDependencies": {
     "bare-ipc": "^1.1.1",
