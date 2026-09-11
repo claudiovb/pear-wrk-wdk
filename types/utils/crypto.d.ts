@@ -5,13 +5,6 @@
 export function memzero(buffer: Buffer | Uint8Array | ArrayBuffer): void;
 
 /**
- * Generate a strong encryption key (32 bytes for AES-256)
- * @returns Encryption key. Caller is responsible for zeroing it once no
- *   longer needed.
- */
-export function generateEncryptionKey(): Buffer;
-
-/**
  * Encrypt data using AES-256-GCM
  * @param data - Data to encrypt. Not zeroed by this function unless an
  *   internal copy had to be made (Uint8Array input) — if a Buffer is

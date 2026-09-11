@@ -14,12 +14,15 @@ const assert = require('node:assert')
 
 const {
   memzero,
-  generateEncryptionKey,
   encrypt,
   decrypt,
   generateEntropy,
   encryptSecrets
 } = require('../src/utils/crypto')
+
+// generateEncryptionKey was removed (dead code, no callers) — tests below
+// that need a throwaway key generate one the same way it did internally.
+const generateEncryptionKey = () => require('bare-crypto').randomBytes(32)
 
 describe('crypto utils', () => {
   describe('memzero', () => {
@@ -58,20 +61,6 @@ describe('crypto utils', () => {
       assert.doesNotThrow(() => memzero({}))
       assert.doesNotThrow(() => memzero('not a buffer'))
       assert.doesNotThrow(() => memzero(42))
-    })
-  })
-
-  describe('generateEncryptionKey', () => {
-    test('returns a 32-byte Buffer', () => {
-      const key = generateEncryptionKey()
-      assert.ok(Buffer.isBuffer(key))
-      assert.strictEqual(key.length, 32)
-    })
-
-    test('returns a different key on each call', () => {
-      const key1 = generateEncryptionKey()
-      const key2 = generateEncryptionKey()
-      assert.notDeepStrictEqual(key1, key2)
     })
   })
 

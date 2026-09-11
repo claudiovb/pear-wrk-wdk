@@ -11,11 +11,15 @@ const crypto = require('bare-crypto')
  *   schema.json), so there is no wire-format reason to encode into
  *   strings here
  * - Uint8Array is used for entropy operations (required by @scure/bip39)
- * - Ownership: each function's doc comment states exactly which
- *   parameters/return values it zeroes itself vs. leaves for the caller —
- *   a function only zeroes what it allocates itself, never an input
- *   Buffer it was merely handed (the caller may still need it, or may
- *   need to reuse it, e.g. a key across multiple encrypt() calls)
+ * - Ownership spans two layers, each with its own discipline:
+ *   - Primitives (src/utils/crypto.js): a function zeroes only what it allocates
+ *     itself, never an input Buffer it was merely handed — the caller may
+ *     still need it, or may need to reuse it (e.g. a key across multiple
+ *     encrypt() calls). Each function's doc comment states exactly which
+ *     parameters/return values it zeroes.
+ *   - Handlers (src/handlers/*.js): own every inbound request buffer and
+ *     everything they allocate, and zero all of it before returning, on
+ *     every path — see src/utils/secret-scope.js.
  */
 
 /**
@@ -37,15 +41,6 @@ const memzero = (buffer) => {
     // Handle TypedArray views
     new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength).fill(0)
   }
-}
-
-/**
- * Generate a strong encryption key (32 bytes for AES-256)
- * @returns {Buffer} Encryption key. Caller is responsible for zeroing it
- *   once no longer needed.
- */
-const generateEncryptionKey = () => {
-  return crypto.randomBytes(32)
 }
 
 /**
@@ -158,10 +153,15 @@ const encryptSecrets = (seed, entropy) => {
   const entropyBuffer = entropyIsCopy ? Buffer.from(entropy) : entropy
 
   // Wrapped so seedBuffer/entropyBuffer copies still get zeroed even if
-  // the second encrypt() call throws after the first one succeeded.
+  // the second encrypt() call throws after the first one succeeded — and
+  // so encryptionKeyBuffer/encryptedSeedBuffer get zeroed too in that
+  // case, since nothing else would reference them to zero them later.
+  let encryptOk = false
+  let encryptedSeedBuffer
   try {
-    const encryptedSeedBuffer = encrypt(seedBuffer, encryptionKeyBuffer)
+    encryptedSeedBuffer = encrypt(seedBuffer, encryptionKeyBuffer)
     const encryptedEntropyBuffer = encrypt(entropyBuffer, encryptionKeyBuffer)
+    encryptOk = true
 
     return {
       encryptionKey: encryptionKeyBuffer,
@@ -171,12 +171,15 @@ const encryptSecrets = (seed, entropy) => {
   } finally {
     if (seedIsCopy) memzero(seedBuffer)
     if (entropyIsCopy) memzero(entropyBuffer)
+    if (!encryptOk) {
+      memzero(encryptionKeyBuffer)
+      memzero(encryptedSeedBuffer)
+    }
   }
 }
 
 module.exports = {
   memzero,
-  generateEncryptionKey,
   encrypt,
   decrypt,
   generateEntropy,
