@@ -120,9 +120,9 @@ describe('RPC Handlers', () => {
       assert.ok(result.encryptionKey, 'encryptionKey should be present')
       assert.ok(result.encryptedSeedBuffer, 'encryptedSeedBuffer should be present')
       assert.ok(result.encryptedEntropyBuffer, 'encryptedEntropyBuffer should be present')
-      assert.strictEqual(typeof result.encryptionKey, 'string')
-      assert.strictEqual(typeof result.encryptedSeedBuffer, 'string')
-      assert.strictEqual(typeof result.encryptedEntropyBuffer, 'string')
+      assert.ok(Buffer.isBuffer(result.encryptionKey))
+      assert.ok(Buffer.isBuffer(result.encryptedSeedBuffer))
+      assert.ok(Buffer.isBuffer(result.encryptedEntropyBuffer))
     })
 
     test('should generate entropy and encrypt for 24 words', async () => {
@@ -411,17 +411,25 @@ describe('RPC Handlers', () => {
       }
       registerRpcHandlers(mockRpc, context)
       const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
-      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
       const config = {
         networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } },
         modules: { addressBook: {} }
       }
-      const initArgs = { config: JSON.stringify(config), encryptionKey: seedData.encryptionKey, encryptedSeed: seedData.encryptedSeedBuffer }
 
-      await mockRpc.handlers.initializeWDK(initArgs)
+      const seedData1 = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData1.encryptionKey,
+        encryptedSeed: seedData1.encryptedSeedBuffer
+      })
       assert.strictEqual(constructed, 1, 'module constructed on first init')
 
-      await mockRpc.handlers.initializeWDK(initArgs)
+      const seedData2 = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      await mockRpc.handlers.initializeWDK({
+        config: JSON.stringify(config),
+        encryptionKey: seedData2.encryptionKey,
+        encryptedSeed: seedData2.encryptedSeedBuffer
+      })
       assert.deepStrictEqual(closed, [1], 'previous module instance closed on re-init')
       assert.strictEqual(constructed, 2, 'module reconstructed on re-init')
     })

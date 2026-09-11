@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/pear-wrk-wdk",
-  "version": "1.0.0-beta.13",
+  "version": "1.0.0-beta.14",
   "main": "index.js",
   "scripts": {
     "build:types": "tsc --noEmit",
@@ -28,7 +28,7 @@
     "hyperschema": "^1.12.4"
   },
   "optionalDependencies": {
-    "bare-walk-handles": "^2.0.10"
+    "bare-walk-handles": "^2.1.0"
   },
   "devDependencies": {
     "bare-ipc": "^1.1.1",

@@ -1,7 +1,8 @@
 const { entropyToMnemonic, mnemonicToSeedSync, mnemonicToEntropy } = require('@scure/bip39')
 const { wordlist } = require('@scure/bip39/wordlists/english.js')
-const { validateRequest, validateBase64, validateMnemonic, validateWordCount } = require('../utils/validation')
-const { memzero, decrypt, generateEntropy, encryptSecrets } = require('../utils/crypto')
+const { validateRequest, validateBuffer, validateMnemonic, validateWordCount } = require('../utils/validation')
+const { decrypt, generateEntropy, encryptSecrets } = require('../utils/crypto')
+const { createSecretScope } = require('../utils/secret-scope')
 
 /** @typedef {import('../../types/rpc').WdkGenerateEntropyParams} WdkGenerateEntropyParams */
 /** @typedef {import('../../types/rpc').WdkGetMnemonicParams} WdkGetMnemonicParams */
@@ -9,31 +10,37 @@ const { memzero, decrypt, generateEntropy, encryptSecrets } = require('../utils/
 
 /**
  * @param {WdkGenerateEntropyParams} request
- * @returns {Promise<WdkEntropyResult>} All three returned values are strings and
- *   cannot be zeroed — see encryptSecrets. The intermediate mnemonic string
- *   generated internally also cannot be zeroed.
+ * @returns {Promise<WdkEntropyResult>} Return buffers, not zeroed by this
+ *   handler. JSON-RPC zeroes them after base64-encoding (see
+ *   buffer-fields.js); HRPC hands them back live with no interception
+ *   point in this repo, so zeroing them is that caller's responsibility.
  */
 async function generateEntropyAndEncryptHandler (request) {
   const { wordCount } = request
+  const scope = createSecretScope()
 
-  validateRequest(request, () => validateWordCount(wordCount, 'wordCount'))
+  try {
+    validateRequest(request, () => validateWordCount(wordCount, 'wordCount'))
 
-  const entropy = generateEntropy(wordCount)
+    const entropy = scope.track(generateEntropy(wordCount))
 
-  const mnemonic = entropyToMnemonic(entropy, wordlist)
+    // Known, accepted gap: JS strings are immutable, so mnemonic can't be
+    // zeroed and stays in the V8 heap until GC reclaims it.
+    const mnemonic = entropyToMnemonic(entropy, wordlist)
 
-  const seedBuffer = mnemonicToSeedSync(mnemonic)
-  const entropyBuffer = Buffer.from(entropy)
+    const seedBuffer = scope.track(mnemonicToSeedSync(mnemonic))
+    const entropyBuffer = scope.track(Buffer.from(entropy))
 
-  const { encryptionKey, encryptedSeedBuffer, encryptedEntropyBuffer } =
-    encryptSecrets(seedBuffer, entropyBuffer)
+    const { encryptionKey, encryptedSeedBuffer, encryptedEntropyBuffer } =
+      encryptSecrets(seedBuffer, entropyBuffer)
 
-  memzero(entropy)
-
-  return {
-    encryptionKey,
-    encryptedSeedBuffer,
-    encryptedEntropyBuffer
+    return {
+      encryptionKey,
+      encryptedSeedBuffer,
+      encryptedEntropyBuffer
+    }
+  } finally {
+    scope.close()
   }
 }
 
@@ -45,25 +52,29 @@ async function generateEntropyAndEncryptHandler (request) {
  */
 async function getMnemonicFromEntropyHandler (request) {
   const { encryptedEntropy, encryptionKey } = request
+  const scope = createSecretScope()
 
-  validateRequest(request, () => {
-    validateBase64(encryptedEntropy, 'encryptedEntropy')
-    validateBase64(encryptionKey, 'encryptionKey')
-  })
+  try {
+    scope.track(encryptedEntropy)
+    scope.track(encryptionKey)
 
-  const entropyBuffer = decrypt(encryptedEntropy, encryptionKey)
+    validateRequest(request, () => {
+      validateBuffer(encryptedEntropy, 'encryptedEntropy')
+      validateBuffer(encryptionKey, 'encryptionKey')
+    })
 
-  // For @scure/bip39 compatibility
-  const entropy = new Uint8Array(entropyBuffer.length)
-  entropy.set(entropyBuffer)
+    const entropyBuffer = scope.track(decrypt(encryptedEntropy, encryptionKey))
 
-  const mnemonic = entropyToMnemonic(entropy, wordlist)
+    // For @scure/bip39 compatibility
+    const entropy = scope.track(new Uint8Array(entropyBuffer.length))
+    entropy.set(entropyBuffer)
 
-  // Important: Zero out sensitive buffers
-  memzero(entropyBuffer)
-  memzero(entropy)
+    const mnemonic = entropyToMnemonic(entropy, wordlist)
 
-  return { mnemonic }
+    return { mnemonic }
+  } finally {
+    scope.close()
+  }
 }
 
 /**
@@ -73,24 +84,24 @@ async function getMnemonicFromEntropyHandler (request) {
  * @param {object} request - The RPC request object
  * @param {string} request.mnemonic - BIP39 mnemonic phrase (12 or 24 words).
  *   As a JS string, it cannot be zeroed and remains in the V8 heap after this call.
- * @returns {Promise<WdkEntropyResult>} Encrypted seed and entropy with encryption key.
- *   All three returned values are strings and cannot be zeroed — see encryptSecrets.
+ * @returns {Promise<WdkEntropyResult>} Not zeroed by this handler — same
+ *   transport-dependent handling as generateEntropyAndEncryptHandler:
+ *   zeroed for JSON-RPC (buffer-fields.js), left live for HRPC.
  */
 async function getSeedAndEntropyFromMnemonicHandler (request) {
   const { mnemonic } = request
+  const scope = createSecretScope()
 
-  validateRequest(request, () => validateMnemonic(mnemonic, 'mnemonic'))
-
-  const seed = mnemonicToSeedSync(mnemonic)
-  let entropy
   try {
-    entropy = mnemonicToEntropy(mnemonic, wordlist)
-  } catch (err) {
-    memzero(seed)
-    throw err
-  }
+    validateRequest(request, () => validateMnemonic(mnemonic, 'mnemonic'))
 
-  return encryptSecrets(seed, entropy)
+    const seed = scope.track(mnemonicToSeedSync(mnemonic))
+    const entropy = scope.track(mnemonicToEntropy(mnemonic, wordlist))
+
+    return encryptSecrets(seed, entropy)
+  } finally {
+    scope.close()
+  }
 }
 
 module.exports = {
