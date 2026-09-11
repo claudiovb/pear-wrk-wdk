@@ -24,12 +24,12 @@ export function validateNonNegativeInteger(value: any, fieldName: string): void;
 export function validateEnum(value: any, allowedValues: any[], fieldName: string): void;
 
 /**
- * Validate base64 encoded string format
+ * Validate that a value is a non-empty Buffer
  * @param value - Value to validate
  * @param fieldName - Name of the field for error messages
  * @throws {Error} If validation fails
  */
-export function validateBase64(value: any, fieldName: string): void;
+export function validateBuffer(value: any, fieldName: string): void;
 
 /**
  * Validate JSON string
