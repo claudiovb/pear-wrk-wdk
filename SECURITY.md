@@ -10,6 +10,11 @@ may and may not be logged.
 If you're changing anything that touches a seed, mnemonic, entropy, or
 encryption key, read this first.
 
+## Reporting a vulnerability
+
+- **User funds at risk** — submit through the [Tether Bug Bounty](https://tether.to/en/bug-bounty/). Do not open a public issue.
+- **Behavioural or informational** — open a [GitHub issue](https://github.com/tetherto/pear-wrk-wdk/issues/new).
+
 ## Scope
 
 Treated as sensitive throughout this codebase:
