@@ -1,5 +1,6 @@
 const ERROR_CODES = require('../exceptions/error-codes')
 const { decrypt, memzero } = require('../utils/crypto')
+const { createSecretScope } = require('../utils/secret-scope')
 const logger = require('../utils/logger')
 const {
   validateBuffer,
@@ -37,7 +38,6 @@ function releaseWdkSeedBuffer (context) {
 async function initializeWdkHandler (init, context) {
   const { WDK, walletManagers, wdk, wdkLoadError, protocolManagers } = context
 
-  // Validate request object (validation of fields happens below)
   if (!init || typeof init !== 'object') {
     throw createErrorWithCode(
       'Init must be an object',
@@ -52,76 +52,72 @@ async function initializeWdkHandler (init, context) {
     throw createErrorWithCode(errorMsg, ERROR_CODES.WDK_MANAGER_INIT)
   }
 
-  if (wdk) {
-    logger.info('Disposing existing WDK instance...')
-    // Close hosted modules too, so they reconstruct with the new seed below.
-    if (context.moduleRuntime) await context.moduleRuntime.closeAll()
-    wdk.dispose()
-    // Wipe only when replacing the seed; config-only re-init reuses it.
-    if (init.encryptedSeed && init.encryptionKey) {
-      releaseWdkSeedBuffer(context)
-    }
-  }
+  const scope = createSecretScope()
 
-  /** @type {WdkWorkletConfig} */
-  let workletConfig
-  validateRequest(
-    init,
-    () => {
-      validateNonEmptyString(init.config, 'config')
-      workletConfig = validateJSON(init.config, 'config')
+  try {
+    scope.track(init.encryptedSeed)
+    scope.track(init.encryptionKey)
 
-      const isValidParams = (init.encryptedSeed && init.encryptionKey) || (!init.encryptedSeed && !init.encryptionKey)
-
-      if (!isValidParams) {
-        throw createErrorWithCode(
-          'encryptionKey and encryptedSeed must be provided or omitted',
-          ERROR_CODES.BAD_REQUEST
-        )
-      }
-
+    if (wdk) {
+      logger.info('Disposing existing WDK instance...')
+      // Close hosted modules too, so they reconstruct with the new seed below.
+      if (context.moduleRuntime) await context.moduleRuntime.closeAll()
+      wdk.dispose()
+      // Wipe only when replacing the seed; config-only re-init reuses it.
       if (init.encryptedSeed && init.encryptionKey) {
-        validateBuffer(init.encryptionKey, 'encryptionKey')
-        validateBuffer(init.encryptedSeed, 'encryptedSeed')
+        releaseWdkSeedBuffer(context)
       }
-    },
-    'Init'
-  )
+    }
 
-  if (
-    !workletConfig ||
-    !workletConfig.networks ||
-    typeof workletConfig.networks !== 'object' ||
-    Object.keys(workletConfig.networks).length === 0
-  ) {
-    throw createErrorWithCode(
-      'At least one network configuration must be provided',
-      ERROR_CODES.BAD_REQUEST
+    /** @type {WdkWorkletConfig} */
+    let workletConfig
+    validateRequest(
+      init,
+      () => {
+        validateNonEmptyString(init.config, 'config')
+        workletConfig = validateJSON(init.config, 'config')
+
+        const isValidParams = (init.encryptedSeed && init.encryptionKey) || (!init.encryptedSeed && !init.encryptionKey)
+
+        if (!isValidParams) {
+          throw createErrorWithCode(
+            'encryptionKey and encryptedSeed must be provided or omitted',
+            ERROR_CODES.BAD_REQUEST
+          )
+        }
+
+        if (init.encryptedSeed && init.encryptionKey) {
+          validateBuffer(init.encryptionKey, 'encryptionKey')
+          validateBuffer(init.encryptedSeed, 'encryptedSeed')
+        }
+      },
+      'Init'
     )
-  }
 
-  if (init.encryptionKey && init.encryptedSeed) {
-    logger.info('Initializing WDK with encrypted seed')
-    let decryptedSeedBuffer
-    try {
-      decryptedSeedBuffer = decrypt(init.encryptedSeed, init.encryptionKey)
-    } catch (error) {
-      memzero(init.encryptedSeed)
-      memzero(init.encryptionKey)
+    if (
+      !workletConfig ||
+      !workletConfig.networks ||
+      typeof workletConfig.networks !== 'object' ||
+      Object.keys(workletConfig.networks).length === 0
+    ) {
       throw createErrorWithCode(
-        `Failed to decrypt seed: ${error.message}`,
+        'At least one network configuration must be provided',
         ERROR_CODES.BAD_REQUEST
       )
     }
 
-    // decrypt() doesn't touch encryptedSeed/encryptionKey — they're the raw
-    // request buffers we own as the sole consumer of this inbound RPC
-    // call, so we zero them here once no longer needed, on both the
-    // success and failure path.
-    memzero(init.encryptedSeed)
-    memzero(init.encryptionKey)
+    if (init.encryptionKey && init.encryptedSeed) {
+      logger.info('Initializing WDK with encrypted seed')
+      let decryptedSeedBuffer
+      try {
+        decryptedSeedBuffer = scope.track(decrypt(init.encryptedSeed, init.encryptionKey))
+      } catch (error) {
+        throw createErrorWithCode(
+          `Failed to decrypt seed: ${error.message}`,
+          ERROR_CODES.BAD_REQUEST
+        )
+      }
 
-    try {
       // Construct seed-bound modules before WDK takes the buffer; factories consume
       // the seed synchronously — the same buffer the wallet uses, never copied or retained.
       if (workletConfig.modules && Object.keys(workletConfig.modules).length > 0) {
@@ -133,79 +129,81 @@ async function initializeWdkHandler (init, context) {
       }
 
       context.wdk = new WDK(decryptedSeedBuffer)
-    } catch (error) {
-      // Decrypt succeeded but a later step failed so decryptedSeedBuffer must be wiped
-      memzero(decryptedSeedBuffer)
-      throw error
+      // WDK retains this buffer and never zeroes it itself (see
+      // releaseWdkSeedBuffer) — release it from the scope so close()
+      // doesn't zero out live wallet key material. From here on it
+      // survives even if later registration steps below throw, matching
+      // a partially-initialized wdk that's still live and needs it.
+      context.wdkSeedBuffer = scope.release(decryptedSeedBuffer)
     }
 
-    context.wdkSeedBuffer = decryptedSeedBuffer
-  }
-
-  if (!context.wdk) {
-    throw createErrorWithCode(
-      'WDK must be initialized with a seed before module registration.',
-      ERROR_CODES.WDK_MANAGER_INIT
-    )
-  }
-
-  for (const [networkName, networkConfig] of Object.entries(workletConfig.networks)) {
-    const blockchain = networkConfig.blockchain
-
-    if (networkName !== blockchain) {
+    if (!context.wdk) {
       throw createErrorWithCode(
-        `Network key "${networkName}" must match blockchain field "${blockchain}"`,
-        ERROR_CODES.BAD_REQUEST
+        'WDK must be initialized with a seed before module registration.',
+        ERROR_CODES.WDK_MANAGER_INIT
       )
     }
 
-    if (networkConfig.config && typeof networkConfig.config === 'object') {
-      const walletManager = walletManagers[networkName]
+    for (const [networkName, networkConfig] of Object.entries(workletConfig.networks)) {
+      const blockchain = networkConfig.blockchain
 
-      if (!walletManager) {
+      if (networkName !== blockchain) {
         throw createErrorWithCode(
-          `No wallet manager found for blockchain: ${networkName}`,
-          ERROR_CODES.WDK_MANAGER_INIT
-        )
-      }
-
-      logger.info(`Registering ${networkName} wallet`)
-      context.wdk.registerWallet(networkName, walletManager, networkConfig.config)
-    }
-  }
-
-  if (
-    workletConfig.protocols &&
-    Object.keys(workletConfig.protocols).length > 0
-  ) {
-    for (const protocolConfig of Object.values(workletConfig.protocols)) {
-      const protocolName = protocolConfig.protocolName
-      const protocolManager = protocolManagers[protocolName]
-
-      if (!protocolManager) {
-        throw createErrorWithCode(
-          `No protocol manager found for protocol: ${protocolName}`,
-          ERROR_CODES.WDK_MANAGER_INIT
-        )
-      }
-
-      if (!walletManagers[protocolConfig.blockchain]) {
-        throw createErrorWithCode(
-          `No wallet manager found for network: ${protocolConfig.blockchain}`,
+          `Network key "${networkName}" must match blockchain field "${blockchain}"`,
           ERROR_CODES.BAD_REQUEST
         )
       }
-      logger.info(`Registering ${protocolName} protocol`)
-      context.wdk.registerProtocol(
-        protocolConfig.blockchain,
-        protocolName,
-        protocolManager,
-        protocolConfig.config
-      )
+
+      if (networkConfig.config && typeof networkConfig.config === 'object') {
+        const walletManager = walletManagers[networkName]
+
+        if (!walletManager) {
+          throw createErrorWithCode(
+            `No wallet manager found for blockchain: ${networkName}`,
+            ERROR_CODES.WDK_MANAGER_INIT
+          )
+        }
+
+        logger.info(`Registering ${networkName} wallet`)
+        context.wdk.registerWallet(networkName, walletManager, networkConfig.config)
+      }
     }
+
+    if (
+      workletConfig.protocols &&
+      Object.keys(workletConfig.protocols).length > 0
+    ) {
+      for (const protocolConfig of Object.values(workletConfig.protocols)) {
+        const protocolName = protocolConfig.protocolName
+        const protocolManager = protocolManagers[protocolName]
+
+        if (!protocolManager) {
+          throw createErrorWithCode(
+            `No protocol manager found for protocol: ${protocolName}`,
+            ERROR_CODES.WDK_MANAGER_INIT
+          )
+        }
+
+        if (!walletManagers[protocolConfig.blockchain]) {
+          throw createErrorWithCode(
+            `No wallet manager found for network: ${protocolConfig.blockchain}`,
+            ERROR_CODES.BAD_REQUEST
+          )
+        }
+        logger.info(`Registering ${protocolName} protocol`)
+        context.wdk.registerProtocol(
+          protocolConfig.blockchain,
+          protocolName,
+          protocolManager,
+          protocolConfig.config
+        )
+      }
+    }
+    logger.info('WDK initialization complete')
+    return { status: 'initialized' }
+  } finally {
+    scope.close()
   }
-  logger.info('WDK initialization complete')
-  return { status: 'initialized' }
 }
 
 /**
@@ -216,13 +214,6 @@ async function initializeWdkHandler (init, context) {
  */
 async function resetWdkWallets (params, context) {
   const { walletManagers, wdk } = context
-
-  if (!params || typeof params !== 'object') {
-    throw createErrorWithCode(
-      'Params must be an object',
-      ERROR_CODES.BAD_REQUEST
-    )
-  }
 
   /** @type {Omit<WdkWorkletConfig, 'protocols'>} */
   let workletConfig
