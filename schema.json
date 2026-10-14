@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "schema": [
     {
       "name": "log-type-enum",
@@ -42,33 +42,8 @@
       "name": "workletStart-request",
       "namespace": "wdk-core",
       "compact": false,
-      "flagsPosition": 0,
-      "fields": [
-        {
-          "name": "enableDebugLogs",
-          "required": false,
-          "type": "uint",
-          "version": 1
-        },
-        {
-          "name": "seedPhrase",
-          "required": false,
-          "type": "string",
-          "version": 1
-        },
-        {
-          "name": "seedBuffer",
-          "required": false,
-          "type": "string",
-          "version": 1
-        },
-        {
-          "name": "config",
-          "required": true,
-          "type": "string",
-          "version": 1
-        }
-      ]
+      "flagsPosition": -1,
+      "fields": []
     },
     {
       "name": "workletStart-response",
@@ -222,17 +197,17 @@
       "fields": [
         {
           "name": "encryptionKey",
-          "type": "string",
+          "type": "buffer",
           "version": 1
         },
         {
           "name": "encryptedSeedBuffer",
-          "type": "string",
+          "type": "buffer",
           "version": 1
         },
         {
           "name": "encryptedEntropyBuffer",
-          "type": "string",
+          "type": "buffer",
           "version": 1
         }
       ]
@@ -246,13 +221,13 @@
         {
           "name": "encryptedEntropy",
           "required": true,
-          "type": "string",
+          "type": "buffer",
           "version": 1
         },
         {
           "name": "encryptionKey",
           "required": true,
-          "type": "string",
+          "type": "buffer",
           "version": 1
         }
       ]
@@ -292,17 +267,17 @@
       "fields": [
         {
           "name": "encryptionKey",
-          "type": "string",
+          "type": "buffer",
           "version": 1
         },
         {
           "name": "encryptedSeedBuffer",
-          "type": "string",
+          "type": "buffer",
           "version": 1
         },
         {
           "name": "encryptedEntropyBuffer",
-          "type": "string",
+          "type": "buffer",
           "version": 1
         }
       ]
@@ -314,21 +289,15 @@
       "flagsPosition": 0,
       "fields": [
         {
-          "name": "seedPhrase",
-          "required": false,
-          "type": "string",
-          "version": 1
-        },
-        {
           "name": "encryptionKey",
           "required": false,
-          "type": "string",
+          "type": "buffer",
           "version": 1
         },
         {
           "name": "encryptedSeed",
           "required": false,
-          "type": "string",
+          "type": "buffer",
           "version": 1
         },
         {

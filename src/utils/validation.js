@@ -41,25 +41,14 @@ function validateEnum (value, allowedValues, fieldName) {
 }
 
 /**
- * Validate base64 encoded string format
+ * Validate that a value is a non-empty Buffer
  * @param {any} value - Value to validate
  * @param {string} fieldName - Name of the field for error messages
  * @throws {Error} If validation fails
  */
-function validateBase64 (value, fieldName) {
-  validateNonEmptyString(value, fieldName)
-
-  // Basic base64 validation (alphanumeric, +, /, =, and whitespace)
-  const base64Regex = /^[A-Za-z0-9+/=\s]*$/
-  if (!base64Regex.test(value)) {
-    throw new Error(`${fieldName} must be a valid base64-encoded string`)
-  }
-
-  // Try to decode to ensure it's valid base64
-  try {
-    Buffer.from(value, 'base64')
-  } catch (error) {
-    throw new Error(`${fieldName} is not valid base64: ${error.message}`)
+function validateBuffer (value, fieldName) {
+  if (!Buffer.isBuffer(value) || value.length === 0) {
+    throw new Error(`${fieldName} must be a non-empty buffer`)
   }
 }
 
@@ -163,7 +152,7 @@ module.exports = {
   validateNonEmptyString,
   validateNonNegativeInteger,
   validateEnum,
-  validateBase64,
+  validateBuffer,
   validateJSON,
   validateMnemonic,
   validateWordCount,

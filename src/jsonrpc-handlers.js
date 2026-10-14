@@ -1,6 +1,7 @@
 const { generateEntropyAndEncryptHandler, getMnemonicFromEntropyHandler, getSeedAndEntropyFromMnemonicHandler, initializeWdkHandler, disposeWdkHandler, registerWalletHandler, registerProtocolHandler, callMethodHandler, createModuleRuntime } = require('./handlers')
 const rpcException = require('./exceptions/rpc-exception')
 const { safeStringify } = require('./utils/safe-stringify')
+const { decodeBufferFields, encodeBufferFields } = require('./utils/buffer-fields')
 
 /** @typedef {import('../types/rpc').RpcContext} RpcContext */
 
@@ -105,6 +106,11 @@ function registerJsonRpcHandlers (ipc, context) {
   async function handleJsonRpcMessage (message) {
     const { id, method, params } = message
 
+    // JSON has no binary type — known secret-bearing fields cross this
+    // transport as base64 strings; decode them back into real Buffers so
+    // handlers see the same shapes the HRPC transport gives them.
+    decodeBufferFields(params)
+
     if (id === null || id === undefined) {
       const response = safeStringify({
         jsonrpc: '2.0',
@@ -135,8 +141,6 @@ function registerJsonRpcHandlers (ipc, context) {
 
     try {
       let result
-      logger.info(`JSON-RPC request: ${method}`)
-
       switch (method) {
         case 'workletStart':
           result = await withErrorHandling(async () => {
@@ -228,7 +232,9 @@ function registerJsonRpcHandlers (ipc, context) {
           throw new Error(`Unknown method: ${method}`)
       }
 
-      logger.info(`JSON-RPC response: ${method}`)
+      // Mirror decodeBufferFields on the way out — encode any real Buffers
+      // in the result back to base64 strings before this crosses into JSON.
+      encodeBufferFields(result)
 
       const response = safeStringify({
         jsonrpc: '2.0',
@@ -268,8 +274,6 @@ function registerJsonRpcHandlers (ipc, context) {
   ipc.on('data', (data) => {
     processFramedData(data)
   })
-
-  logger.info('JSON-RPC handlers registered')
 }
 
 module.exports = {
