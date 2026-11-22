@@ -29,7 +29,7 @@
   ],
   "dependencies": {
     "@scure/bip39": "^2.2.0",
-    "hrpc": "^4.0.1",
+    "hrpc": "^4.3.2",
     "hyperschema": "^1.12.4"
   },
   "peerDependencies": {
