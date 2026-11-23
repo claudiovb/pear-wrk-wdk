@@ -112,6 +112,15 @@ logs are errors only. Anything closer to secret material logs at
 value — e.g. `validateMnemonic` reports which word position is invalid,
 never the word itself.
 
+An error returned to the host carries the name and message of the thrown
+error, its simple properties (`details`) and the same for each error in
+its `cause` chain (`causes`). Only strings, finite numbers and booleans
+are copied — never an object or an array, so a request or response body
+attached to an error stays in the worklet. The secret field names the
+logger redacts (`src/utils/secret-keys.js`) are skipped, strings are cut
+at 256 characters, and at most 16 properties of one error and 8 causes
+are reported.
+
 **When adding a log line or error message near secret material: if
 there's any doubt, log the shape (a field name, a count, a boolean), not
 the value.**

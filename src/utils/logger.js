@@ -10,6 +10,7 @@
  */
 
 const { safeStringify } = require('./safe-stringify')
+const SECRET_KEYS = require('./secret-keys')
 
 const LOG_LEVELS = {
   DEBUG: 0,
@@ -18,21 +19,6 @@ const LOG_LEVELS = {
   ERROR: 3,
   NONE: 4
 }
-
-/**
- * Object keys whose values are never written to the console, on any platform
- * and at any log level.
- * @type {Set<string>}
- */
-const SECRET_KEYS = new Set([
-  'mnemonic',
-  'encryptionKey',
-  'encryptedSeed',
-  'encryptedSeedBuffer',
-  'encryptedEntropy',
-  'encryptedEntropyBuffer',
-  'seed'
-])
 
 const REDACTED_PLACEHOLDER = '[redacted]'
 const NESTED_OBJECT_PLACEHOLDER = '[object]'

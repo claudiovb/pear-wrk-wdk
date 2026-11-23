@@ -15,12 +15,9 @@ const withErrorHandling = (handler, defaultErrorCode) => {
     try {
       return await handler(...args)
     } catch (error) {
-      // Create structured error response
-      const structuredError = rpcException.createStructuredError(error, defaultErrorCode)
       // Throw as Error with structured data in message (for RPC transport)
       // The RPC layer will handle serialization
-      const errorMessage = JSON.stringify(structuredError)
-      throw new Error(errorMessage)
+      throw rpcException.toRpcError(error, defaultErrorCode)
     }
   }
 }
