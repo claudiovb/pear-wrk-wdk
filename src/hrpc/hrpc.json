@@ -28,7 +28,11 @@
       "name": "@wdk-core/dispose",
       "request": {
         "name": "@wdk-core/dispose-request",
-        "send": true
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/dispose-response",
+        "stream": false
       },
       "version": 1
     },

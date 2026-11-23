@@ -58,6 +58,7 @@ class HRPC {
     ])
     this._responseEncodings = new Map([
       ['@wdk-core/workletStart', getEncoding('@wdk-core/workletStart-response')],
+      ['@wdk-core/dispose', getEncoding('@wdk-core/dispose-response')],
       ['@wdk-core/callMethod', getEncoding('@wdk-core/callMethod-response')],
       ['@wdk-core/generateEntropyAndEncrypt', getEncoding('@wdk-core/generateEntropyAndEncrypt-response')],
       ['@wdk-core/getMnemonicFromEntropy', getEncoding('@wdk-core/getMnemonicFromEntropy-response')],
@@ -173,8 +174,8 @@ class HRPC {
     return this._call('@wdk-core/workletStart', args)
   }
 
-  dispose(args) {
-    return this._callSync('@wdk-core/dispose', args)
+  async dispose(args) {
+    return this._call('@wdk-core/dispose', args)
   }
 
   async callMethod(args) {
@@ -292,7 +293,6 @@ class HRPC {
     return [
       // prettier-ignore
       '@wdk-core/log',
-      '@wdk-core/dispose',
       '@wdk-core/moduleEvent'
     ].includes(command)
   }

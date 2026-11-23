@@ -48,7 +48,8 @@ function generateHrpc ({ schemaData, schemaDir, hrpcDir, outputDir }) {
         fields: def.fields.map(field => ({
           name: field.name,
           type: field.type,
-          required: field.required !== undefined ? field.required : false
+          required: field.required !== undefined ? field.required : false,
+          array: field.array !== undefined ? field.array : false
         }))
       })
     }

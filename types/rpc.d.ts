@@ -28,7 +28,12 @@ export type PingResponse = Record<string, never>;
 
 export interface DisposeRequest {
   // Optional list of blockchains to dispose. Omit to dispose the entire WDK instance.
-  blockchains?: string[];
+  blockchains?: string[] | null;
+}
+
+export interface DisposeResponse {
+  // Sent once the teardown has finished.
+  status: 'disposed';
 }
 
 export interface RpcContext {

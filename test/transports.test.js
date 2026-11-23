@@ -14,7 +14,7 @@
 // Load test setup first to mock bare-crypto
 require('./setup.js')
 
-const { test, describe, beforeEach } = require('node:test')
+const { test, describe, beforeEach, mock } = require('node:test')
 const assert = require('node:assert')
 
 const HRPC = require('../generated/hrpc')
@@ -63,8 +63,10 @@ for (const [name, Transport] of TRANSPORTS) {
     let account
     let protocol
     let addressBook
+    let disposeMock
 
     beforeEach(() => {
+      disposeMock = mock.fn()
       wallet = { getAccount: async () => account }
       protocol = {}
       account = { getSwapProtocol: () => protocol }
@@ -75,7 +77,7 @@ for (const [name, Transport] of TRANSPORTS) {
         WDK: class {
           registerWallet () {}
           getAccount (network, index) { return wallet.getAccount(network, index) }
-          dispose () {}
+          dispose (...args) { return disposeMock(...args) }
         },
         walletManagers: { bitcoin: {} },
         protocolManagers: {},
@@ -116,6 +118,47 @@ for (const [name, Transport] of TRANSPORTS) {
 
         finishGetBalance(1000)
         assert.deepStrictEqual(await call, { result: '1000' })
+      })
+    })
+
+    describe('dispose', () => {
+      test('should resolve with the disposed status and discard the WDK instance', async () => {
+        await initializeWdk()
+
+        const result = await host.dispose({})
+
+        assert.deepStrictEqual(result, { status: 'disposed' })
+        assert.deepStrictEqual(disposeMock.mock.calls.map((call) => call.arguments), [[]])
+        assert.strictEqual(context.wdk, null)
+        assert.strictEqual(context.wdkSeedBuffer, null)
+      })
+
+      test('should dispose only the given blockchains and keep the seed', async () => {
+        await initializeWdk()
+        const wdk = context.wdk
+        const seed = Buffer.from(context.wdkSeedBuffer)
+
+        const result = await host.dispose({ blockchains: ['bitcoin'] })
+
+        assert.deepStrictEqual(result, { status: 'disposed' })
+        assert.deepStrictEqual(disposeMock.mock.calls.map((call) => call.arguments), [[['bitcoin']]])
+        assert.strictEqual(context.wdk, wdk)
+        assert.deepStrictEqual(context.wdkSeedBuffer, seed)
+      })
+
+      test('should reject when the WDK fails to dispose and keep answering', async () => {
+        await initializeWdk()
+        disposeMock.mock.mockImplementation(() => { throw new Error('Socket already closed') })
+
+        const call = host.dispose({})
+
+        await assertRejectsWith(call, {
+          code: 'WALLET_ERROR',
+          name: 'Error',
+          message: 'Socket already closed'
+        })
+        assert.strictEqual(context.wdk, null)
+        assert.deepStrictEqual(await host.ping(), {})
       })
     })
 

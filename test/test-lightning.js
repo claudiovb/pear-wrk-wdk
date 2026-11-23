@@ -82,7 +82,10 @@ async function testLightningInvoice () {
 
     // Step 3: Cleanup
     console.log('🧹 Cleaning up...')
-    hrpc.dispose({})
+    const { status } = await hrpc.dispose({})
+    if (status !== 'disposed') {
+      throw new Error(`Unexpected dispose status: ${status}`)
+    }
     console.log('✓ Worklet disposed\n')
 
     console.log('✅ Test completed successfully!')
@@ -96,7 +99,7 @@ async function testLightningInvoice () {
 
     // Try to cleanup on error
     try {
-      hrpc.dispose({})
+      await hrpc.dispose({})
     } catch (e) {
       // Ignore cleanup errors
     }

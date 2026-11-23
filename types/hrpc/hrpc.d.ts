@@ -5,6 +5,7 @@ import type {
   PingRequest,
   PingResponse,
   DisposeRequest,
+  DisposeResponse,
   CallMethodRequest,
   CallMethodResponse,
   CallModuleRequest,
@@ -72,9 +73,10 @@ export class HRPC {
   getSeedAndEntropyFromMnemonic(args: { mnemonic: string }): Promise<WdkEntropyResult>;
 
   /**
-   * Dispose of the worklet
+   * Dispose the WDK instance, or only the given blockchains. Resolves once
+   * the teardown has finished. The argument is required: pass {} for a full dispose.
    */
-  dispose(args: DisposeRequest): void;
+  dispose(args: DisposeRequest): Promise<DisposeResponse>;
 
   /**
    * Call a method on a wallet account
@@ -149,7 +151,9 @@ export class HRPC {
   /**
    * Register a handler for dispose
    */
-  onDispose(responseFn: (request: DisposeRequest) => Promise<void>): void;
+  onDispose(
+    responseFn: (request: DisposeRequest) => Promise<DisposeResponse>
+  ): void;
 
   /**
    * Register a handler for call method
