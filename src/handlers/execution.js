@@ -1,4 +1,5 @@
 const ERROR_CODES = require('../exceptions/error-codes')
+const { callExternal } = require('../exceptions/rpc-exception')
 const logger = require('../utils/logger')
 const { safeStringify } = require('../utils/safe-stringify')
 const { validateNonEmptyString, validateNonNegativeInteger, validateJSON, validateRequest, createErrorWithCode } = require('../utils/validation')
@@ -51,7 +52,7 @@ async function callMethodHandler (payload, context) {
     accountIndex,
     args: argsJson,
     options: optionsJson
-  } = payload
+  } = payload ?? {}
 
   let args, options
 
@@ -112,10 +113,12 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
   try {
     account = await wdk.getAccount(network, accountIndex)
   } catch (error) {
-    throw createErrorWithCode(
+    const failure = createErrorWithCode(
       `Failed to get account for network "${network}" at index ${accountIndex}: ${error.message}`,
-      ERROR_CODES.ACCOUNT_BALANCES
+      ERROR_CODES.WALLET_ERROR
     )
+    failure.cause = error
+    throw failure
   }
 
   const protocolAccessor = PROTOCOL_ACCESSORS[options?.protocolType]
@@ -123,7 +126,7 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
     if (!options?.protocolName) {
       throw createErrorWithCode(`Protocol name is required for ${options.protocolType} protocol`, ERROR_CODES.BAD_REQUEST)
     }
-    account = account[protocolAccessor](options.protocolName)
+    account = await callExternal(ERROR_CODES.PROTOCOL_ERROR, () => account[protocolAccessor](options.protocolName))
   }
 
   if (typeof account[methodName] !== 'function') {
@@ -164,7 +167,10 @@ const callWdkMethod = async ({ context, methodName, network, accountIndex, args 
   // - Non-array (object/primitive): pass as single argument -> method(args)
   // - null/undefined: call with no arguments -> method()
   const argsArray = Array.isArray(args) ? args : (args !== null && args !== undefined ? [args] : [])
-  const result = await account[methodName](...argsArray)
+  const result = await callExternal(
+    protocolAccessor ? ERROR_CODES.PROTOCOL_ERROR : ERROR_CODES.WALLET_ERROR,
+    () => account[methodName](...argsArray)
+  )
 
   return result
 }

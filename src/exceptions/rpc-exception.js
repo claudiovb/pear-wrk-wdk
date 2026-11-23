@@ -39,6 +39,49 @@ const DEFAULT_ERROR_NAME = 'Error'
 /** Properties that other fields of the description already report. */
 const DESCRIBED_KEYS = new Set(['name', 'message', 'stack', 'cause'])
 
+/** The codes of this worklet, as opposed to a code set by a library. */
+const OWN_CODES = new Set(Object.values(ERROR_CODES))
+
+/**
+ * An error thrown by code the worklet calls but does not own: a wallet, a
+ * protocol or a module. It pairs the thrown value, kept as its cause, with
+ * the code that says which kind of call failed. The thrown value itself is
+ * what gets described to the host.
+ */
+class ExternalError extends Error {
+  /**
+   * @param {ERROR_CODES} code - The code to report for the thrown value.
+   * @param {unknown} cause - The thrown value.
+   */
+  constructor (code, cause) {
+    super('An external call failed', { cause })
+
+    this.name = 'ExternalError'
+
+    /**
+     * The code to report for the thrown value.
+     * @type {ERROR_CODES}
+     */
+    this.code = code
+  }
+}
+
+/**
+ * Call code the worklet does not own and report what it throws under a code.
+ * @template T
+ * @param {ERROR_CODES} code - The code to report for a thrown value.
+ * @param {() => T | Promise<T>} call - The call to make.
+ * @returns {Promise<T>} The result of the call.
+ * @throws {ExternalError} If the call throws.
+ */
+async function callExternal (code, call) {
+  try {
+    return await call()
+  } catch (error) {
+    throw new ExternalError(code, error)
+  }
+}
+
 /**
  * Copy the simple properties of an error: strings, finite numbers and booleans.
  * Objects, arrays and functions are skipped, so a request or a response body
@@ -124,24 +167,22 @@ function describeCauses (error) {
 }
 
 /**
- * Create the description of an error that is sent to the host.
+ * Create the description of an error that is sent to the host. Its code is
+ * always one of this worklet's codes: the one an ExternalError carries, the
+ * one the worklet set on the error, or the default. A code set by a library
+ * is not used as ours; it is reported in the details.
  * @param {unknown} error - The thrown value.
- * @param {ERROR_CODES} [code] - The code to report when the error has none. Inferred if not provided.
+ * @param {ERROR_CODES} [defaultCode] - The code to report when the error carries none of ours.
  * @returns {StructuredError} The description.
  */
-function createStructuredError (error, code) {
-  if (error.code) {
+function createStructuredError (error, defaultCode = ERROR_CODES.INTERNAL_ERROR) {
+  let code = defaultCode
+
+  if (error instanceof ExternalError) {
     code = error.code
-  } else if (!code) {
-    if (error instanceof TypeError) {
-      code = ERROR_CODES.BAD_REQUEST
-    } else if (error.message && error.message.includes('WDK')) {
-      code = ERROR_CODES.WDK_MANAGER_INIT
-    } else if (error.message && error.message.includes('balance')) {
-      code = ERROR_CODES.ACCOUNT_BALANCES
-    } else {
-      code = ERROR_CODES.UNKNOWN
-    }
+    error = error.cause
+  } else if (error !== null && typeof error === 'object' && OWN_CODES.has(error.code)) {
+    code = error.code
   }
 
   /** @type {StructuredError} */
@@ -161,11 +202,11 @@ function createStructuredError (error, code) {
  * It is always a plain Error: the RPC layer does not answer a request whose
  * handler throws a TypeError, a SyntaxError or a RangeError.
  * @param {unknown} error - The thrown value.
- * @param {ERROR_CODES} [code] - The code to report when the error has none.
+ * @param {ERROR_CODES} [defaultCode] - The code to report when the error carries none of ours.
  * @returns {Error & { code: ERROR_CODES }} The error to throw.
  */
-function toRpcError (error, code) {
-  const structuredError = createStructuredError(error, code)
+function toRpcError (error, defaultCode) {
+  const structuredError = createStructuredError(error, defaultCode)
 
   const rpcError = new Error(JSON.stringify(structuredError))
   rpcError.code = structuredError.code
@@ -174,6 +215,8 @@ function toRpcError (error, code) {
 }
 
 module.exports = {
+  ExternalError,
+  callExternal,
   createStructuredError,
   toRpcError
 }

@@ -104,6 +104,32 @@ describe('RPC Handlers', () => {
     })
   })
 
+  describe('missing request', () => {
+    // A host that sends a command with no payload reaches the handler with null.
+    const cases = [
+      ['generateEntropyAndEncrypt', 'Request must be an object'],
+      ['getMnemonicFromEntropy', 'Request must be an object'],
+      ['getSeedAndEntropyFromMnemonic', 'Request must be an object'],
+      ['initializeWDK', 'Init must be an object'],
+      ['resetWdkWallets', 'Worklet config must be an object'],
+      ['callMethod', 'Payload must be an object'],
+      ['registerWallet', 'RegisterWalletRequest must be an object'],
+      ['registerProtocol', 'RegisterProtocolRequest must be an object']
+    ]
+
+    for (const [handler, message] of cases) {
+      test(`${handler} should reject with BAD_REQUEST`, async () => {
+        registerRpcHandlers(mockRpc, context)
+
+        await assert.rejects(mockRpc.handlers[handler](null), (error) => {
+          assert.strictEqual(error.code, 'BAD_REQUEST')
+          assert.deepStrictEqual(JSON.parse(error.message), { code: 'BAD_REQUEST', name: 'Error', message })
+          return true
+        })
+      })
+    }
+  })
+
   describe('workletStart', () => {
     test('should return started status', async () => {
       registerRpcHandlers(mockRpc, context)

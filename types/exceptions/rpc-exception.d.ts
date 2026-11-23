@@ -29,11 +29,37 @@ export interface StructuredError extends ErrorDescription {
 }
 
 /**
- * Create the description of an error that is sent to the host
+ * An error thrown by code the worklet calls but does not own: a wallet, a
+ * protocol or a module. It pairs the thrown value, kept as its cause, with
+ * the code that says which kind of call failed.
+ */
+export class ExternalError extends Error {
+  constructor(code: ERROR_CODES, cause: unknown);
+
+  // The code to report for the thrown value
+  code: ERROR_CODES;
+
+  // The thrown value
+  cause: unknown;
+}
+
+/**
+ * Call code the worklet does not own and report what it throws under a code.
+ * Rejects with an ExternalError if the call throws.
+ */
+export function callExternal<T>(
+  code: ERROR_CODES,
+  call: () => T | Promise<T>
+): Promise<T>;
+
+/**
+ * Create the description of an error that is sent to the host. Its code is
+ * always one of the worklet's codes; a code set by a library is reported in
+ * the details.
  */
 export function createStructuredError(
   error: unknown,
-  code?: ERROR_CODES
+  defaultCode?: ERROR_CODES
 ): StructuredError;
 
 /**
@@ -42,5 +68,5 @@ export function createStructuredError(
  */
 export function toRpcError(
   error: unknown,
-  code?: ERROR_CODES
+  defaultCode?: ERROR_CODES
 ): Error & { code: ERROR_CODES };

@@ -30,26 +30,54 @@ const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abando
 const CONFIG = JSON.stringify({
   networks: {
     bitcoin: { blockchain: 'bitcoin', config: { host: 'electrum.example.com' } }
+  },
+  modules: {
+    addressBook: {}
   }
 })
+
+const SWAP_OPTIONS = JSON.stringify({ protocolType: 'swap', protocolName: 'velora' })
+
+/**
+ * Assert that a call rejects with the given structured error, both as the JSON
+ * of the message and as the code the transport carries next to it.
+ * @param {Promise<unknown>} call - The call the host made.
+ * @param {object} expected - The structured error the host must receive.
+ */
+async function assertRejectsWith (call, expected) {
+  await assert.rejects(call, (error) => {
+    assert.strictEqual(error.code, expected.code)
+    assert.deepStrictEqual(JSON.parse(error.message), expected)
+    return true
+  })
+}
 
 for (const [name, Transport] of TRANSPORTS) {
   describe(`${name} transport`, () => {
     let host
+    let context
+    let wallet
     let account
+    let protocol
+    let addressBook
 
     beforeEach(() => {
-      account = {}
+      wallet = { getAccount: async () => account }
+      protocol = {}
+      account = { getSwapProtocol: () => protocol }
+      addressBook = {}
 
-      const context = {
+      context = {
         wdk: null,
         WDK: class {
           registerWallet () {}
-          async getAccount () { return account }
+          getAccount (network, index) { return wallet.getAccount(network, index) }
           dispose () {}
         },
         walletManagers: { bitcoin: {} },
         protocolManagers: {},
+        moduleManagers: { addressBook: { createModule: () => addressBook } },
+        allowedModuleMethods: { addressBook: { methods: ['list', 'add'] } },
         wdkLoadError: null
       }
 
@@ -66,22 +94,55 @@ for (const [name, Transport] of TRANSPORTS) {
       await host.initializeWDK({ encryptionKey, encryptedSeed: encryptedSeedBuffer, config: CONFIG })
     }
 
-    describe('errors', () => {
-      test('should reject with the code and the message of an error raised by a handler', async () => {
+    describe('error codes', () => {
+      test('should reject with WDK_MANAGER_INIT when the WDK is not initialized', async () => {
         const call = host.callMethod({ methodName: 'getAddress', network: 'bitcoin', accountIndex: 0 })
 
-        await assert.rejects(call, (error) => {
-          assert.strictEqual(error.code, 'WDK_MANAGER_INIT')
-          assert.deepStrictEqual(JSON.parse(error.message), {
-            code: 'WDK_MANAGER_INIT',
-            message: 'WDK not initialized. Call initializeWDK first.',
-            name: 'Error'
-          })
-          return true
+        await assertRejectsWith(call, {
+          code: 'WDK_MANAGER_INIT',
+          name: 'Error',
+          message: 'WDK not initialized. Call initializeWDK first.'
         })
       })
 
-      test('should reject with the name, the details and the causes of an error thrown by a wallet method', async () => {
+      test('should reject with BAD_REQUEST when a field of the request is not valid', async () => {
+        const call = host.callMethod({ methodName: '', network: 'bitcoin', accountIndex: 0 })
+
+        await assertRejectsWith(call, {
+          code: 'BAD_REQUEST',
+          name: 'Error',
+          message: 'methodName must be a non-empty string'
+        })
+      })
+
+      test('should reject with BAD_REQUEST when the entropy cannot be decrypted', async () => {
+        const { encryptedEntropyBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+        const call = host.getMnemonicFromEntropy({
+          encryptedEntropy: encryptedEntropyBuffer,
+          encryptionKey: Buffer.alloc(32, 7)
+        })
+
+        await assertRejectsWith(call, {
+          code: 'BAD_REQUEST',
+          name: 'Error',
+          message: 'Failed to decrypt entropy: Unsupported state or unable to authenticate data'
+        })
+      })
+
+      test('should reject with METHOD_NOT_ALLOWED when the method is not in the allowed list', async () => {
+        await initializeWdk()
+
+        const call = host.callModule({ module: 'addressBook', method: 'remove' })
+
+        await assertRejectsWith(call, {
+          code: 'METHOD_NOT_ALLOWED',
+          name: 'Error',
+          message: 'Method "remove" is not allowed for module "addressBook".'
+        })
+      })
+
+      test('should reject with WALLET_ERROR, the details and the causes when a wallet method throws', async () => {
         await initializeWdk()
         account.sendTransaction = async () => {
           const cause = Object.assign(new Error('429 Too Many Requests'), { name: 'HttpError', httpStatus: 429 })
@@ -94,18 +155,92 @@ for (const [name, Transport] of TRANSPORTS) {
 
         const call = host.callMethod({ methodName: 'sendTransaction', network: 'bitcoin', accountIndex: 0 })
 
-        await assert.rejects(call, (error) => {
-          assert.strictEqual(error.code, 'UNKNOWN')
-          assert.deepStrictEqual(JSON.parse(error.message), {
-            code: 'UNKNOWN',
-            message: 'No unspent outputs available.',
-            name: 'TransactionError',
-            details: { reason: 'INSUFFICIENT_BALANCE' },
-            causes: [
-              { name: 'HttpError', message: '429 Too Many Requests', details: { httpStatus: 429 } }
-            ]
-          })
-          return true
+        await assertRejectsWith(call, {
+          code: 'WALLET_ERROR',
+          name: 'TransactionError',
+          message: 'No unspent outputs available.',
+          details: { reason: 'INSUFFICIENT_BALANCE' },
+          causes: [
+            { name: 'HttpError', message: '429 Too Many Requests', details: { httpStatus: 429 } }
+          ]
+        })
+      })
+
+      test('should reject with WALLET_ERROR and keep the code of a library in the details', async () => {
+        await initializeWdk()
+        account.sendTransaction = async () => {
+          throw Object.assign(new Error('insufficient funds for intrinsic transaction cost'), { code: 'INSUFFICIENT_FUNDS' })
+        }
+
+        const call = host.callMethod({ methodName: 'sendTransaction', network: 'bitcoin', accountIndex: 0 })
+
+        await assertRejectsWith(call, {
+          code: 'WALLET_ERROR',
+          name: 'Error',
+          message: 'insufficient funds for intrinsic transaction cost',
+          details: { code: 'INSUFFICIENT_FUNDS' }
+        })
+      })
+
+      test('should reject with WALLET_ERROR when the account cannot be resolved', async () => {
+        await initializeWdk()
+        wallet.getAccount = async () => { throw new Error('Wallet for bitcoin is not registered') }
+
+        const call = host.callMethod({ methodName: 'getAddress', network: 'bitcoin', accountIndex: 0 })
+
+        await assertRejectsWith(call, {
+          code: 'WALLET_ERROR',
+          name: 'Error',
+          message: 'Failed to get account for network "bitcoin" at index 0: Wallet for bitcoin is not registered',
+          causes: [
+            { name: 'Error', message: 'Wallet for bitcoin is not registered' }
+          ]
+        })
+      })
+
+      test('should reject with PROTOCOL_ERROR when a protocol method throws', async () => {
+        await initializeWdk()
+        protocol.quoteSwap = async () => {
+          throw Object.assign(new Error("Operation 'quoteSwap' is not supported by this protocol."), { name: 'UnsupportedOperationError' })
+        }
+
+        const call = host.callMethod({ methodName: 'quoteSwap', network: 'bitcoin', accountIndex: 0, options: SWAP_OPTIONS })
+
+        await assertRejectsWith(call, {
+          code: 'PROTOCOL_ERROR',
+          name: 'UnsupportedOperationError',
+          message: "Operation 'quoteSwap' is not supported by this protocol."
+        })
+      })
+
+      test('should reject with MODULE_ERROR when a module method throws', async () => {
+        await initializeWdk()
+        addressBook.add = async () => {
+          throw Object.assign(new Error('Address book is full'), { name: 'StorageError', limit: 100 })
+        }
+
+        const call = host.callModule({ module: 'addressBook', method: 'add' })
+
+        await assertRejectsWith(call, {
+          code: 'MODULE_ERROR',
+          name: 'StorageError',
+          message: 'Address book is full',
+          details: { limit: 100 }
+        })
+      })
+
+      test('should reject with INTERNAL_ERROR when the code of the worklet itself fails', async () => {
+        await initializeWdk()
+        context.walletManagers = null
+
+        const call = host.registerWallet({
+          config: JSON.stringify({ bitcoin: { blockchain: 'bitcoin', config: { host: 'electrum.example.com' } } })
+        })
+
+        await assertRejectsWith(call, {
+          code: 'INTERNAL_ERROR',
+          name: 'TypeError',
+          message: "Cannot read properties of null (reading 'bitcoin')"
         })
       })
     })

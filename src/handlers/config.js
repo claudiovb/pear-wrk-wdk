@@ -1,4 +1,5 @@
 const ERROR_CODES = require('../exceptions/error-codes')
+const { callExternal } = require('../exceptions/rpc-exception')
 const logger = require('../utils/logger')
 const {
   validateNonEmptyString,
@@ -17,7 +18,7 @@ const {
  * @returns {Promise<{ status: string, blockchains: string }>}
  */
 async function registerWalletHandler (request, context) {
-  const { config: configJson } = request
+  const { config: configJson } = request ?? {}
   const { walletManagers, wdk } = context
 
   /** @type {Record<string, NetworkConfig>} */
@@ -69,7 +70,7 @@ async function registerWalletHandler (request, context) {
       }
 
       logger.info(`Registering ${networkName} wallet dynamically`)
-      wdk.registerWallet(networkName, walletManager, networkConfig.config)
+      await callExternal(ERROR_CODES.WALLET_ERROR, () => wdk.registerWallet(networkName, walletManager, networkConfig.config))
       registeredNetworks.push(networkName)
     }
   }
@@ -94,11 +95,18 @@ async function registerWalletHandler (request, context) {
  * @returns {Promise<{ status: string }>}
  */
 async function registerProtocolHandler (request, context) {
-  const { config: workletConfig } = request
+  const { config: workletConfig } = request ?? {}
   const { wdk, protocolManagers, walletManagers } = context
 
   /** @type {Record<string, ProtocolConfig>} */
-  const protocolConfigs = validateJSON(workletConfig, 'config')
+  let protocolConfigs
+  validateRequest(
+    request,
+    () => {
+      protocolConfigs = validateJSON(workletConfig, 'config')
+    },
+    'RegisterProtocolRequest'
+  )
 
   if (!wdk) {
     throw createErrorWithCode(
@@ -131,12 +139,12 @@ async function registerProtocolHandler (request, context) {
         `Registering ${protocolName} protocol`
       )
 
-      wdk.registerProtocol(
+      await callExternal(ERROR_CODES.PROTOCOL_ERROR, () => wdk.registerProtocol(
         protocolConfig.blockchain,
         protocolName,
         protocolManager,
         protocolConfig.config
-      )
+      ))
     }
   }
 

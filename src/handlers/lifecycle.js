@@ -1,4 +1,5 @@
 const ERROR_CODES = require('../exceptions/error-codes')
+const { callExternal } = require('../exceptions/rpc-exception')
 const { decrypt, memzero } = require('../utils/crypto')
 const { createSecretScope } = require('../utils/secret-scope')
 const logger = require('../utils/logger')
@@ -62,7 +63,7 @@ async function initializeWdkHandler (init, context) {
       logger.info('Disposing existing WDK instance...')
       // Close hosted modules too, so they reconstruct with the new seed below.
       if (context.moduleRuntime) await context.moduleRuntime.closeAll()
-      wdk.dispose()
+      await callExternal(ERROR_CODES.WALLET_ERROR, () => wdk.dispose())
       // Wipe only when replacing the seed; config-only re-init reuses it.
       if (init.encryptedSeed && init.encryptionKey) {
         releaseWdkSeedBuffer(context)
@@ -128,7 +129,7 @@ async function initializeWdkHandler (init, context) {
         }
       }
 
-      context.wdk = new WDK(decryptedSeedBuffer)
+      context.wdk = await callExternal(ERROR_CODES.WDK_MANAGER_INIT, () => new WDK(decryptedSeedBuffer))
       // WDK retains this buffer and never zeroes it itself (see
       // releaseWdkSeedBuffer) — release it from the scope so close()
       // doesn't zero out live wallet key material. From here on it
@@ -165,7 +166,7 @@ async function initializeWdkHandler (init, context) {
         }
 
         logger.info(`Registering ${networkName} wallet`)
-        context.wdk.registerWallet(networkName, walletManager, networkConfig.config)
+        await callExternal(ERROR_CODES.WALLET_ERROR, () => context.wdk.registerWallet(networkName, walletManager, networkConfig.config))
       }
     }
 
@@ -191,12 +192,12 @@ async function initializeWdkHandler (init, context) {
           )
         }
         logger.info(`Registering ${protocolName} protocol`)
-        context.wdk.registerProtocol(
+        await callExternal(ERROR_CODES.PROTOCOL_ERROR, () => context.wdk.registerProtocol(
           protocolConfig.blockchain,
           protocolName,
           protocolManager,
           protocolConfig.config
-        )
+        ))
       }
     }
     logger.info('WDK initialization complete')
@@ -249,7 +250,7 @@ async function resetWdkWallets (params, context) {
     .filter(networkConfig => networkConfig.config && typeof networkConfig.config === 'object')
     .map(networkConfig => networkConfig.blockchain)
   // Only disposes these chains; modules stay up (a full dispose closes them).
-  wdk.dispose(targetChains)
+  await callExternal(ERROR_CODES.WALLET_ERROR, () => wdk.dispose(targetChains))
 
   for (const networkConfig of Object.values(workletConfig.networks)) {
     const networkName = networkConfig.blockchain
@@ -265,7 +266,7 @@ async function resetWdkWallets (params, context) {
       }
 
       logger.info(`Registering ${networkName} wallet`)
-      wdk.registerWallet(networkName, walletManager, networkConfig.config)
+      await callExternal(ERROR_CODES.WALLET_ERROR, () => wdk.registerWallet(networkName, walletManager, networkConfig.config))
     }
   }
 
@@ -298,10 +299,10 @@ async function disposeWdkHandler (request, context) {
   }
 
   if (blockchains) {
-    context.wdk.dispose(blockchains)
+    await callExternal(ERROR_CODES.WALLET_ERROR, () => context.wdk.dispose(blockchains))
   } else {
     try {
-      context.wdk.dispose()
+      await callExternal(ERROR_CODES.WALLET_ERROR, () => context.wdk.dispose())
     } finally {
       // Even if dispose() throws, don't leave a half-torn-down wdk in
       // place or the seed buffer unwiped.

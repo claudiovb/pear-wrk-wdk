@@ -1,6 +1,7 @@
 const { entropyToMnemonic, mnemonicToSeedSync, mnemonicToEntropy } = require('@scure/bip39')
 const { wordlist } = require('@scure/bip39/wordlists/english.js')
-const { validateRequest, validateBuffer, validateMnemonic, validateWordCount } = require('../utils/validation')
+const ERROR_CODES = require('../exceptions/error-codes')
+const { validateRequest, validateBuffer, validateMnemonic, validateWordCount, createErrorWithCode } = require('../utils/validation')
 const { decrypt, generateEntropy, encryptSecrets } = require('../utils/crypto')
 const { createSecretScope } = require('../utils/secret-scope')
 
@@ -16,7 +17,7 @@ const { createSecretScope } = require('../utils/secret-scope')
  *   point in this repo, so zeroing them is that caller's responsibility.
  */
 async function generateEntropyAndEncryptHandler (request) {
-  const { wordCount } = request
+  const { wordCount } = request ?? {}
   const scope = createSecretScope()
 
   try {
@@ -51,7 +52,7 @@ async function generateEntropyAndEncryptHandler (request) {
  *   displayed to the user.
  */
 async function getMnemonicFromEntropyHandler (request) {
-  const { encryptedEntropy, encryptionKey } = request
+  const { encryptedEntropy, encryptionKey } = request ?? {}
   const scope = createSecretScope()
 
   try {
@@ -63,7 +64,15 @@ async function getMnemonicFromEntropyHandler (request) {
       validateBuffer(encryptionKey, 'encryptionKey')
     })
 
-    const entropyBuffer = scope.track(decrypt(encryptedEntropy, encryptionKey))
+    let entropyBuffer
+    try {
+      entropyBuffer = scope.track(decrypt(encryptedEntropy, encryptionKey))
+    } catch (error) {
+      throw createErrorWithCode(
+        `Failed to decrypt entropy: ${error.message}`,
+        ERROR_CODES.BAD_REQUEST
+      )
+    }
 
     // For @scure/bip39 compatibility
     const entropy = scope.track(new Uint8Array(entropyBuffer.length))
@@ -89,7 +98,7 @@ async function getMnemonicFromEntropyHandler (request) {
  *   zeroed for JSON-RPC (buffer-fields.js), left live for HRPC.
  */
 async function getSeedAndEntropyFromMnemonicHandler (request) {
-  let { mnemonic } = request
+  let { mnemonic } = request ?? {}
   const scope = createSecretScope()
 
   try {

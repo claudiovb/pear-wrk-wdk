@@ -9,7 +9,7 @@
 const { test, describe } = require('node:test')
 const assert = require('node:assert')
 
-const { createStructuredError, toRpcError } = require('../src/exceptions/rpc-exception')
+const { ExternalError, callExternal, createStructuredError, toRpcError } = require('../src/exceptions/rpc-exception')
 
 function createErrorWithCode (message, code) {
   return Object.assign(new Error(message), { code })
@@ -54,6 +54,55 @@ describe('createStructuredError', () => {
     assert.deepStrictEqual(structuredError, {
       code: 'METHOD_NOT_ALLOWED',
       message: 'Something failed',
+      name: 'Error'
+    })
+  })
+
+  test('should report INTERNAL_ERROR when the error carries no code and the caller gives none', () => {
+    const error = new TypeError("Cannot read properties of undefined (reading 'bitcoin')")
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      message: "Cannot read properties of undefined (reading 'bitcoin')",
+      name: 'TypeError'
+    })
+  })
+
+  test('should not report the code of a library as the code, and keep it in the details', () => {
+    const error = Object.assign(new TypeError('Invalid authentication tag length: 7'), { code: 'ERR_CRYPTO_INVALID_AUTH_TAG' })
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      message: 'Invalid authentication tag length: 7',
+      name: 'TypeError',
+      details: { code: 'ERR_CRYPTO_INVALID_AUTH_TAG' }
+    })
+  })
+
+  test('should report the code of an external error and describe the value it wraps', () => {
+    const thrown = Object.assign(new Error('insufficient funds for intrinsic transaction cost'), { code: 'INSUFFICIENT_FUNDS' })
+    const error = new ExternalError('WALLET_ERROR', thrown)
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'WALLET_ERROR',
+      message: 'insufficient funds for intrinsic transaction cost',
+      name: 'Error',
+      details: { code: 'INSUFFICIENT_FUNDS' }
+    })
+  })
+
+  test('should describe a thrown null', () => {
+    const structuredError = createStructuredError(null)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      message: 'null',
       name: 'Error'
     })
   })
@@ -241,6 +290,27 @@ describe('toRpcError', () => {
       code: 'BAD_REQUEST',
       message: 'Init must be an object',
       name: 'TypeError'
+    })
+  })
+})
+
+describe('callExternal', () => {
+  test('should return the result of the call', async () => {
+    const result = await callExternal('WALLET_ERROR', async () => ({ address: 'bc1qexample' }))
+
+    assert.deepStrictEqual(result, { address: 'bc1qexample' })
+  })
+
+  test('should throw an external error with the code and the thrown value as its cause', async () => {
+    const thrown = new Error('No unspent outputs available.')
+
+    const call = callExternal('WALLET_ERROR', () => { throw thrown })
+
+    await assert.rejects(call, (error) => {
+      assert.ok(error instanceof ExternalError)
+      assert.strictEqual(error.code, 'WALLET_ERROR')
+      assert.strictEqual(error.cause, thrown)
+      return true
     })
   })
 })

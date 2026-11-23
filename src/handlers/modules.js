@@ -1,4 +1,5 @@
 const ERROR_CODES = require('../exceptions/error-codes')
+const { callExternal } = require('../exceptions/rpc-exception')
 const logger = require('../utils/logger')
 const { safeStringify } = require('../utils/safe-stringify')
 const {
@@ -153,8 +154,10 @@ function createModuleRuntime (rpc, context) {
 
     // Array args spread as positional; non-array passed as a single argument.
     const argsArray = Array.isArray(args) ? args : (args !== null && args !== undefined ? [args] : [])
-    let result = await fn.apply(instance, argsArray)
-    result = await materialize(result) // stream / async-iterable -> array
+    const result = await callExternal(
+      ERROR_CODES.MODULE_ERROR,
+      async () => materialize(await fn.apply(instance, argsArray)) // stream / async-iterable -> array
+    )
     return { result: safeStringify(normalize(result ?? null)) } // Buffer/Uint8Array -> hex
   }
 
