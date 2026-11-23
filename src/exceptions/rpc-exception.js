@@ -11,6 +11,7 @@ const SECRET_KEYS = require('../utils/secret-keys')
  * @property {string} name - The error's name.
  * @property {string} message - The error's message.
  * @property {ErrorDetails} [details] - The error's simple properties. Left out when there is none.
+ * @property {string} [stack] - The error's stack trace. Only in a debug build.
  */
 
 /**
@@ -24,6 +25,12 @@ const SECRET_KEYS = require('../utils/secret-keys')
  * @typedef {ErrorDescription & StructuredErrorFields} StructuredError
  */
 
+/**
+ * @typedef {Object} StructuredErrorOptions
+ * @property {ERROR_CODES} [defaultCode=ERROR_CODES.INTERNAL_ERROR] - The code to report when the error carries none of ours.
+ * @property {boolean} [debug=false] - Whether to report the stack trace of each error. For debug builds only.
+ */
+
 /** The most errors of a cause chain that are reported. */
 const MAX_CAUSES = 8
 
@@ -32,6 +39,9 @@ const MAX_DETAILS = 16
 
 /** The most characters of a string property that are copied to the details. */
 const MAX_DETAIL_LENGTH = 256
+
+/** The most characters of a stack trace that are reported. */
+const MAX_STACK_LENGTH = 4096
 
 /** The name reported for a thrown value that is not an error. */
 const DEFAULT_ERROR_NAME = 'Error'
@@ -120,10 +130,12 @@ function collectDetails (error, reportedCode) {
 /**
  * Describe one thrown value by its name, its message and its simple properties.
  * @param {unknown} error - The thrown value.
- * @param {ERROR_CODES} [reportedCode] - The code that is reported next to the description.
+ * @param {Object} [options]
+ * @param {ERROR_CODES} [options.reportedCode] - The code that is reported next to the description.
+ * @param {boolean} [options.debug=false] - Whether to report the stack trace.
  * @returns {ErrorDescription} The description.
  */
-function describeError (error, reportedCode) {
+function describeError (error, { reportedCode, debug = false } = {}) {
   /** @type {ErrorDescription} */
   const description = {
     name: error instanceof Error ? error.name : DEFAULT_ERROR_NAME,
@@ -134,6 +146,8 @@ function describeError (error, reportedCode) {
     const details = collectDetails(error, reportedCode)
 
     if (Object.keys(details).length > 0) description.details = details
+
+    if (debug && typeof error.stack === 'string') description.stack = error.stack.slice(0, MAX_STACK_LENGTH)
   }
 
   return description
@@ -142,9 +156,10 @@ function describeError (error, reportedCode) {
 /**
  * Describe the chain of causes under an error, outermost first.
  * @param {unknown} error - The thrown value.
+ * @param {boolean} debug - Whether to report the stack trace of each cause.
  * @returns {ErrorDescription[]} The descriptions, at most MAX_CAUSES.
  */
-function describeCauses (error) {
+function describeCauses (error, debug) {
   const causes = []
   const seen = new Set([error])
 
@@ -158,7 +173,7 @@ function describeCauses (error) {
     if (cause === undefined || cause === null || seen.has(cause)) break
 
     seen.add(cause)
-    causes.push(describeError(cause))
+    causes.push(describeError(cause, { debug }))
 
     current = cause
   }
@@ -172,10 +187,10 @@ function describeCauses (error) {
  * one the worklet set on the error, or the default. A code set by a library
  * is not used as ours; it is reported in the details.
  * @param {unknown} error - The thrown value.
- * @param {ERROR_CODES} [defaultCode] - The code to report when the error carries none of ours.
+ * @param {StructuredErrorOptions} [options]
  * @returns {StructuredError} The description.
  */
-function createStructuredError (error, defaultCode = ERROR_CODES.INTERNAL_ERROR) {
+function createStructuredError (error, { defaultCode = ERROR_CODES.INTERNAL_ERROR, debug = false } = {}) {
   let code = defaultCode
 
   if (error instanceof ExternalError) {
@@ -186,9 +201,9 @@ function createStructuredError (error, defaultCode = ERROR_CODES.INTERNAL_ERROR)
   }
 
   /** @type {StructuredError} */
-  const structuredError = { code, ...describeError(error, code) }
+  const structuredError = { code, ...describeError(error, { reportedCode: code, debug }) }
 
-  const causes = describeCauses(error)
+  const causes = describeCauses(error, debug)
 
   if (causes.length > 0) structuredError.causes = causes
 
@@ -202,11 +217,11 @@ function createStructuredError (error, defaultCode = ERROR_CODES.INTERNAL_ERROR)
  * It is always a plain Error: the RPC layer does not answer a request whose
  * handler throws a TypeError, a SyntaxError or a RangeError.
  * @param {unknown} error - The thrown value.
- * @param {ERROR_CODES} [defaultCode] - The code to report when the error carries none of ours.
+ * @param {StructuredErrorOptions} [options]
  * @returns {Error & { code: ERROR_CODES }} The error to throw.
  */
-function toRpcError (error, defaultCode) {
-  const structuredError = createStructuredError(error, defaultCode)
+function toRpcError (error, options) {
+  const structuredError = createStructuredError(error, options)
 
   const rpcError = new Error(JSON.stringify(structuredError))
   rpcError.code = structuredError.code

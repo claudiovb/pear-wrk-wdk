@@ -4,25 +4,6 @@ const rpcException = require('./exceptions/rpc-exception')
 /** @typedef {import('../types/rpc').RpcContext} RpcContext */
 
 /**
- * Wrapper for RPC handlers that provides structured error handling
- * Preserves error codes and metadata instead of converting to plain strings
- * @param {Function} handler - The async handler function
- * @param {string} [defaultErrorCode] - Optional default error code
- * @returns {Function} Wrapped handler with error handling
- */
-const withErrorHandling = (handler, defaultErrorCode) => {
-  return async (...args) => {
-    try {
-      return await handler(...args)
-    } catch (error) {
-      // Throw as Error with structured data in message (for RPC transport)
-      // The RPC layer will handle serialization
-      throw rpcException.toRpcError(error, defaultErrorCode)
-    }
-  }
-}
-
-/**
  * Register all RPC handlers with the provided RPC instance
  * @param {any} rpc - The HRPC instance
  * @param {RpcContext} context - Context object containing state and dependencies
@@ -31,6 +12,24 @@ function registerRpcHandlers (rpc, context) {
   const withContext = (handler) => {
     return async (req) => {
       return await handler(req, context)
+    }
+  }
+
+  /**
+   * Wrapper for RPC handlers that provides structured error handling
+   * Preserves error codes and metadata instead of converting to plain strings
+   * @param {Function} handler - The async handler function
+   * @returns {Function} Wrapped handler with error handling
+   */
+  const withErrorHandling = (handler) => {
+    return async (...args) => {
+      try {
+        return await handler(...args)
+      } catch (error) {
+        // Throw as Error with structured data in message (for RPC transport)
+        // The RPC layer will handle serialization
+        throw rpcException.toRpcError(error, { debug: context.debug })
+      }
     }
   }
 

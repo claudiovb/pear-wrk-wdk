@@ -49,7 +49,7 @@ describe('createStructuredError', () => {
   test('should report the code given by the caller when the error has none', () => {
     const error = new Error('Something failed')
 
-    const structuredError = createStructuredError(error, 'METHOD_NOT_ALLOWED')
+    const structuredError = createStructuredError(error, { defaultCode: 'METHOD_NOT_ALLOWED' })
 
     assert.deepStrictEqual(structuredError, {
       code: 'METHOD_NOT_ALLOWED',
@@ -108,7 +108,7 @@ describe('createStructuredError', () => {
   })
 
   test('should describe a thrown value that is not an error', () => {
-    const structuredError = createStructuredError('Something failed', 'BAD_REQUEST')
+    const structuredError = createStructuredError('Something failed', { defaultCode: 'BAD_REQUEST' })
 
     assert.deepStrictEqual(structuredError, {
       code: 'BAD_REQUEST',
@@ -274,6 +274,56 @@ describe('createStructuredError', () => {
       assert.deepStrictEqual(structuredError.causes, [
         { name: 'Error', message: 'Provider unreachable' }
       ])
+    })
+  })
+})
+
+describe('createStructuredError in a debug build', () => {
+  test('should report the stack trace of the error and of each cause', () => {
+    const cause = new Error('429 Too Many Requests')
+    cause.stack = 'Error: 429 Too Many Requests\n    at request (http.js:10:5)'
+    const error = Object.assign(new Error('No unspent outputs available.', { cause }), { code: 'BAD_REQUEST' })
+    error.stack = 'Error: No unspent outputs available.\n    at sendTransaction (wallet.js:20:9)'
+
+    const structuredError = createStructuredError(error, { debug: true })
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'BAD_REQUEST',
+      message: 'No unspent outputs available.',
+      name: 'Error',
+      stack: 'Error: No unspent outputs available.\n    at sendTransaction (wallet.js:20:9)',
+      causes: [
+        {
+          name: 'Error',
+          message: '429 Too Many Requests',
+          stack: 'Error: 429 Too Many Requests\n    at request (http.js:10:5)'
+        }
+      ]
+    })
+  })
+
+  test('should cut a stack trace at 4096 characters', () => {
+    const error = Object.assign(new Error('Wallet failed'), { code: 'BAD_REQUEST' })
+    error.stack = 'a'.repeat(5000)
+
+    const structuredError = createStructuredError(error, { debug: true })
+
+    assert.strictEqual(structuredError.stack, 'a'.repeat(4096))
+  })
+
+  test('should not report a stack trace when the build is not a debug build', () => {
+    const cause = new Error('429 Too Many Requests')
+    const error = Object.assign(new Error('No unspent outputs available.', { cause }), { code: 'BAD_REQUEST' })
+
+    const structuredError = createStructuredError(error, { debug: false })
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'BAD_REQUEST',
+      message: 'No unspent outputs available.',
+      name: 'Error',
+      causes: [
+        { name: 'Error', message: '429 Too Many Requests' }
+      ]
     })
   })
 })

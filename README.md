@@ -86,6 +86,10 @@ const context = {
   requiredNetworks: ['ethereum', 'spark'],
   wdk: null, // Initialized via RPC later
 
+  // Optional, for debug builds only: errors returned to the host then also
+  // carry their stack traces. Leave it out of a production build.
+  debug: false,
+
   // Optional but recommended: without this, callMethod can invoke any method
   // on the resolved account/protocol object, including fund-moving or
   // key-export operations. Listing a network or protocol here restricts it
@@ -201,6 +205,7 @@ A call that fails rejects with an error whose `message` is a JSON string, and wh
 *   **`name`** and **`message`**: Those of the error that was thrown.
 *   **`details`**: Every property of that error whose value is a string, a number or a boolean, such as the `reason` of a wallet error. A code set by a library is here, as `details.code`. Left out when there is none.
 *   **`causes`**: The errors under the thrown one (its `cause` chain), each with its own `name`, `message` and `details`. Left out when there is none.
+*   **`stack`**: The stack trace of the thrown error, and of each cause. Only present when the worklet was built with `debug: true` in its context. It is off by default, a host cannot turn it on, and it is not meant for production builds.
 
 ## License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

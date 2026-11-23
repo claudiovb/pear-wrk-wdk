@@ -17,7 +17,7 @@ const withErrorHandling = (handler, defaultErrorCode) => {
     try {
       return await handler(...args)
     } catch (error) {
-      const structuredError = rpcException.createStructuredError(error, defaultErrorCode)
+      const structuredError = rpcException.createStructuredError(error, { defaultCode: defaultErrorCode })
       const errorMessage = JSON.stringify(structuredError)
       throw new Error(errorMessage)
     }

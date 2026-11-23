@@ -61,6 +61,11 @@ export interface RpcContext {
   // Capabilities injected into modules (reserved; empty by default). Optional.
   capabilities?: Record<string, any>;
 
+  // Set by a debug build only: the errors returned to the host then also
+  // carry the stack trace of the thrown error and of each of its causes.
+  // Off by default. It is part of the bundle, so a host cannot turn it on.
+  debug?: boolean;
+
   // Optional but recommended: without this, callMethod can invoke any method
   // on the resolved account/protocol object, including fund-moving or
   // key-export operations. Shaped like WDK's own protocol storage:

@@ -229,6 +229,26 @@ for (const [name, Transport] of TRANSPORTS) {
         })
       })
 
+      test('should also carry the stack trace when the context is the one of a debug build', async () => {
+        context.debug = true
+        await initializeWdk()
+        account.sendTransaction = async () => {
+          const error = Object.assign(new Error('No unspent outputs available.'), { name: 'TransactionError' })
+          error.stack = 'TransactionError: No unspent outputs available.\n    at sendTransaction (wallet-account-btc.js:20:9)'
+
+          throw error
+        }
+
+        const call = host.callMethod({ methodName: 'sendTransaction', network: 'bitcoin', accountIndex: 0 })
+
+        await assertRejectsWith(call, {
+          code: 'WALLET_ERROR',
+          name: 'TransactionError',
+          message: 'No unspent outputs available.',
+          stack: 'TransactionError: No unspent outputs available.\n    at sendTransaction (wallet-account-btc.js:20:9)'
+        })
+      })
+
       test('should reject with INTERNAL_ERROR when the code of the worklet itself fails', async () => {
         await initializeWdk()
         context.walletManagers = null

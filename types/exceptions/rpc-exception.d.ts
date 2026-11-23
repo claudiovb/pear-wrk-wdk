@@ -14,6 +14,17 @@ export interface ErrorDescription {
 
   // The error's simple properties. Left out when there is none.
   details?: ErrorDetails;
+
+  // The error's stack trace. Only in a debug build (see RpcContext.debug).
+  stack?: string;
+}
+
+export interface StructuredErrorOptions {
+  // The code to report when the error carries none of the worklet's. Defaults to INTERNAL_ERROR.
+  defaultCode?: ERROR_CODES;
+
+  // Whether to report the stack trace of each error. For debug builds only.
+  debug?: boolean;
 }
 
 /**
@@ -59,7 +70,7 @@ export function callExternal<T>(
  */
 export function createStructuredError(
   error: unknown,
-  defaultCode?: ERROR_CODES
+  options?: StructuredErrorOptions
 ): StructuredError;
 
 /**
@@ -68,5 +79,5 @@ export function createStructuredError(
  */
 export function toRpcError(
   error: unknown,
-  defaultCode?: ERROR_CODES
+  options?: StructuredErrorOptions
 ): Error & { code: ERROR_CODES };

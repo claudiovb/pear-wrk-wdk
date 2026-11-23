@@ -121,6 +121,11 @@ logger redacts (`src/utils/secret-keys.js`) are skipped, strings are cut
 at 256 characters, and at most 16 properties of one error and 8 causes
 are reported.
 
+Stack traces are not returned. The one exception is a worklet built with
+`debug: true` in its context, which adds the `stack` of the thrown error
+and of each cause. The flag is part of the bundle: a host cannot turn it
+on at run time, and a production build must not set it.
+
 **When adding a log line or error message near secret material: if
 there's any doubt, log the shape (a field name, a count, a boolean), not
 the value.**
