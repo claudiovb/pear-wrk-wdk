@@ -2,6 +2,8 @@ import type {
   LogRequest,
   WorkletStartRequest,
   WorkletStartResponse,
+  PingRequest,
+  PingResponse,
   DisposeRequest,
   CallMethodRequest,
   CallMethodResponse,
@@ -100,6 +102,11 @@ export class HRPC {
   moduleEvent(args: ModuleEventRequest): void;
 
   /**
+   * Check that the worklet answers. Resolves with an empty object.
+   */
+  ping(args?: PingRequest): Promise<PingResponse>;
+
+  /**
    * Register a handler for log messages
    */
   onLog(responseFn: (request: LogRequest) => Promise<void>): void;
@@ -184,6 +191,13 @@ export class HRPC {
    */
   onModuleEvent(
     responseFn: (request: ModuleEventRequest) => Promise<void>
+  ): void;
+
+  /**
+   * Register a handler for ping. The request has no fields, so the handler receives null.
+   */
+  onPing(
+    responseFn: (request: PingRequest | null) => Promise<PingResponse>
   ): void;
 }
 

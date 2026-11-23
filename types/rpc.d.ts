@@ -21,6 +21,11 @@ export interface WorkletStartResponse {
   status?: string | null;
 }
 
+// The ping command carries no fields, in either direction.
+export type PingRequest = Record<string, never>;
+
+export type PingResponse = Record<string, never>;
+
 export interface DisposeRequest {
   // Optional list of blockchains to dispose. Omit to dispose the entire WDK instance.
   blockchains?: string[];

@@ -16,6 +16,7 @@ const assert = require('node:assert')
 const mockRpc = {
   handlers: {},
   onWorkletStart: function (handler) { this.handlers.workletStart = handler },
+  onPing: function (handler) { this.handlers.ping = handler },
   onGenerateEntropyAndEncrypt: function (handler) { this.handlers.generateEntropyAndEncrypt = handler },
   onGetMnemonicFromEntropy: function (handler) { this.handlers.getMnemonicFromEntropy = handler },
   onGetSeedAndEntropyFromMnemonic: function (handler) { this.handlers.getSeedAndEntropyFromMnemonic = handler },
@@ -135,6 +136,16 @@ describe('RPC Handlers', () => {
       registerRpcHandlers(mockRpc, context)
       const result = await mockRpc.handlers.workletStart({})
       assert.strictEqual(result.status, 'started')
+    })
+  })
+
+  describe('ping', () => {
+    test('should return an empty object', async () => {
+      registerRpcHandlers(mockRpc, context)
+
+      const result = await mockRpc.handlers.ping(null)
+
+      assert.deepStrictEqual(result, {})
     })
   })
 

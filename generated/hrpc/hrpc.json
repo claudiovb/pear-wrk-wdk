@@ -157,6 +157,19 @@
         "send": true
       },
       "version": 1
+    },
+    {
+      "id": 13,
+      "name": "@wdk-core/ping",
+      "request": {
+        "name": "@wdk-core/ping-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-core/ping-response",
+        "stream": false
+      },
+      "version": 1
     }
   ]
 }

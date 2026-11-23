@@ -169,6 +169,7 @@ const address = await hrpc.callMethod({
     *   `encryptedSeedBuffer`: The encrypted seed buffer (returned by `generateEntropyAndEncrypt`).
     *   `config`: JSON stringified configuration object (must contain `networks`).
 *   **`dispose()`**: Tears down the WDK instance and clears sensitive memory.
+*   **`ping()`**: Answers at once with an empty object, whether or not the WDK is initialized. It tells a host one thing: whether the worklet's event loop is still running. It says nothing about any other call. An answer can be late when other requests are doing CPU work (decryption, key derivation, signing), so give it a generous deadline before treating the worklet as stuck.
 
 ### Wallet Interaction
 *   **`callMethod(params)`**: The primary gateway for all wallet actions.

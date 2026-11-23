@@ -97,6 +97,28 @@ for (const [name, Transport] of TRANSPORTS) {
       await host.initializeWDK({ encryptionKey, encryptedSeed: encryptedSeedBuffer, config: CONFIG })
     }
 
+    describe('ping', () => {
+      test('should resolve with an empty object when called with no argument', async () => {
+        const result = await host.ping()
+
+        assert.deepStrictEqual(result, {})
+      })
+
+      test('should answer while a wallet call is still running', async () => {
+        let finishGetBalance
+        await initializeWdk()
+        account.getBalance = () => new Promise((resolve) => { finishGetBalance = resolve })
+        const call = host.callMethod({ methodName: 'getBalance', network: 'bitcoin', accountIndex: 0 })
+
+        const result = await host.ping()
+
+        assert.deepStrictEqual(result, {})
+
+        finishGetBalance(1000)
+        assert.deepStrictEqual(await call, { result: '1000' })
+      })
+    })
+
     describe('error codes', () => {
       test('should reject with WDK_MANAGER_INIT when the WDK is not initialized', async () => {
         const call = host.callMethod({ methodName: 'getAddress', network: 'bitcoin', accountIndex: 0 })

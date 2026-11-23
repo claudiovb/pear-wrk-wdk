@@ -31,7 +31,9 @@ const methods = new Map([
   ['@wdk-core/callModule', 11],
   [11, '@wdk-core/callModule'],
   ['@wdk-core/moduleEvent', 12],
-  [12, '@wdk-core/moduleEvent']
+  [12, '@wdk-core/moduleEvent'],
+  ['@wdk-core/ping', 13],
+  [13, '@wdk-core/ping']
 ])
 
 class HRPC {
@@ -51,7 +53,8 @@ class HRPC {
       ['@wdk-core/registerProtocol', getEncoding('@wdk-core/registerProtocol-request')],
       ['@wdk-core/resetWdkWallets', getEncoding('@wdk-core/resetWdkWallets-request')],
       ['@wdk-core/callModule', getEncoding('@wdk-core/callModule-request')],
-      ['@wdk-core/moduleEvent', getEncoding('@wdk-core/moduleEvent-request')]
+      ['@wdk-core/moduleEvent', getEncoding('@wdk-core/moduleEvent-request')],
+      ['@wdk-core/ping', getEncoding('@wdk-core/ping-request')]
     ])
     this._responseEncodings = new Map([
       ['@wdk-core/workletStart', getEncoding('@wdk-core/workletStart-response')],
@@ -63,7 +66,8 @@ class HRPC {
       ['@wdk-core/registerWallet', getEncoding('@wdk-core/registerWallet-response')],
       ['@wdk-core/registerProtocol', getEncoding('@wdk-core/registerProtocol-response')],
       ['@wdk-core/resetWdkWallets', getEncoding('@wdk-core/resetWdkWallets-response')],
-      ['@wdk-core/callModule', getEncoding('@wdk-core/callModule-response')]
+      ['@wdk-core/callModule', getEncoding('@wdk-core/callModule-response')],
+      ['@wdk-core/ping', getEncoding('@wdk-core/ping-response')]
     ])
     this._rpc = new RPC(stream, async (req) => {
       const command = methods.get(req.command)
@@ -213,6 +217,10 @@ class HRPC {
     return this._callSync('@wdk-core/moduleEvent', args)
   }
 
+  async ping(args) {
+    return this._call('@wdk-core/ping', args)
+  }
+
   onLog(responseFn) {
     this._handlers['@wdk-core/log'] = responseFn
   }
@@ -263,6 +271,10 @@ class HRPC {
 
   onModuleEvent(responseFn) {
     this._handlers['@wdk-core/moduleEvent'] = responseFn
+  }
+
+  onPing(responseFn) {
+    this._handlers['@wdk-core/ping'] = responseFn
   }
 
   _requestIsStream(command) {

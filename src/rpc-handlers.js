@@ -43,6 +43,14 @@ function registerRpcHandlers (rpc, context) {
   }))
 
   /**
+   * Liveness check — answers at once and touches nothing. A host that gets
+   * no answer knows the worklet's event loop is blocked, not just slow.
+   */
+  rpc.onPing(withErrorHandling(async () => {
+    return {}
+  }))
+
+  /**
    * Generate entropy and encrypt seed buffer and entropy
    */
   rpc.onGenerateEntropyAndEncrypt(withErrorHandling(generateEntropyAndEncryptHandler))
