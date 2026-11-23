@@ -27,6 +27,6 @@ jobs:
     steps:
       - uses: tetherto/oss-actions/node-base@v1
       - run: npm install -g bare
-      - run: npm run gen:schema
+      - run: npm run gen:rpcs
       - run: git diff --exit-code generated/
       - run: npm test

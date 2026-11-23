@@ -59,6 +59,6 @@ describe('My Feature', () => {
 Before running tests, ensure generated files exist:
 ```bash
 npm run gen:wallet-modules
-npm run gen:hrpc
+npm run gen:rpcs
 ```
 

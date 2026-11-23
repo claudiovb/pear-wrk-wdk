@@ -13,9 +13,8 @@
     "lint:fix": "standard --fix",
     "test": "node --test test/**/*.test.js",
     "test:watch": "node --test --watch test/**/*.test.js",
-    "gen:hrpc": "node scripts/generate-hrpc.js",
-    "gen:schema": "npm run gen:hrpc",
-    "prepare": "npm run gen:hrpc"
+    "gen:rpcs": "node scripts/generate-rpcs.js",
+    "prepare": "npm run gen:rpcs"
   },
   "files": [
     "index.js",
