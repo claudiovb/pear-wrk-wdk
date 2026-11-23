@@ -18,6 +18,11 @@ const HRPCBuilder = require('hrpc')
 function generateHrpc ({ schemaData, schemaDir, hrpcDir, outputDir }) {
   const hrpcMessagesPath = path.join(outputDir, 'messages.js')
 
+  // Start from an empty schema directory. hyperschema keeps its own version counter
+  // there, and a counter left by an earlier run changes the code it generates, so the
+  // output would differ from one machine to the next. Does nothing if it is not there.
+  fs.rmSync(schemaDir, { recursive: true, force: true })
+
   // Try to load existing schema from directory, or create new one
   let schema
   try {
@@ -92,8 +97,8 @@ function generateHrpc ({ schemaData, schemaDir, hrpcDir, outputDir }) {
     process.exit(1)
   }
 
-  // Set VERSION from schema.json, last (HRPCBuilder rewrites messages.js). Otherwise a
-  // clean build resets it to 1, since the ratchet in generated/schema/ is gitignored.
+  // Set VERSION from schema.json, last (HRPCBuilder rewrites messages.js). Otherwise it
+  // would be 1, since hyperschema's own counter always starts over (see above).
   const schemaVersion = schemaData.version || 1
   const pinnedMessages = fs.readFileSync(hrpcMessagesPath, 'utf8')
     .replace(/\/\/ Schema Version: \d+/, `// Schema Version: ${schemaVersion}`)
