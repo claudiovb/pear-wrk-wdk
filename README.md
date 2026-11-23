@@ -199,6 +199,7 @@ A call that fails rejects with an error whose `message` is a JSON string, and wh
 *   **`code`**: Always one of the codes below. It says where the call failed.
     *   `BAD_REQUEST`: The request is missing or not valid.
     *   `METHOD_NOT_ALLOWED`: The method is not in the list of allowed methods.
+    *   `DECRYPTION_FAILED`: The seed (`initializeWDK`) or the entropy (`getMnemonicFromEntropy`) could not be decrypted with the given key. The message says which of the two.
     *   `WDK_MANAGER_INIT`: The WDK is not initialized, or it failed to initialize.
     *   `WALLET_ERROR`, `PROTOCOL_ERROR`, `MODULE_ERROR`: A wallet, a protocol or a module threw.
     *   `INTERNAL_ERROR`: An unexpected failure in the worklet's own code.

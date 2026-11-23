@@ -38,6 +38,9 @@ const CONFIG = JSON.stringify({
 
 const SWAP_OPTIONS = JSON.stringify({ protocolType: 'swap', protocolName: 'velora' })
 
+// A key of the right size that is not the one the secrets were encrypted with.
+const WRONG_KEY = Buffer.alloc(32, 7)
+
 /**
  * Assert that a call rejects with the given structured error, both as the JSON
  * of the message and as the code the transport carries next to it.
@@ -115,16 +118,32 @@ for (const [name, Transport] of TRANSPORTS) {
         })
       })
 
-      test('should reject with BAD_REQUEST when the entropy cannot be decrypted', async () => {
+      test('should reject with DECRYPTION_FAILED when the seed cannot be decrypted', async () => {
+        const { encryptedSeedBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+        const call = host.initializeWDK({
+          encryptedSeed: encryptedSeedBuffer,
+          encryptionKey: WRONG_KEY,
+          config: CONFIG
+        })
+
+        await assertRejectsWith(call, {
+          code: 'DECRYPTION_FAILED',
+          name: 'Error',
+          message: 'Failed to decrypt seed: Unsupported state or unable to authenticate data'
+        })
+      })
+
+      test('should reject with DECRYPTION_FAILED when the entropy cannot be decrypted', async () => {
         const { encryptedEntropyBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
 
         const call = host.getMnemonicFromEntropy({
           encryptedEntropy: encryptedEntropyBuffer,
-          encryptionKey: Buffer.alloc(32, 7)
+          encryptionKey: WRONG_KEY
         })
 
         await assertRejectsWith(call, {
-          code: 'BAD_REQUEST',
+          code: 'DECRYPTION_FAILED',
           name: 'Error',
           message: 'Failed to decrypt entropy: Unsupported state or unable to authenticate data'
         })

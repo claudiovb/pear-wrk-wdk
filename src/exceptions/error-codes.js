@@ -14,6 +14,8 @@ const ERROR_CODES = {
   DUPLICATE_REQUEST: 'DUPLICATE_REQUEST',
   /** The method is not in the list of allowed methods. */
   METHOD_NOT_ALLOWED: 'METHOD_NOT_ALLOWED',
+  /** The seed or the entropy could not be decrypted with the given key. */
+  DECRYPTION_FAILED: 'DECRYPTION_FAILED',
   /** A wallet threw: its details and causes describe the failure. */
   WALLET_ERROR: 'WALLET_ERROR',
   /** A protocol threw: its details and causes describe the failure. */

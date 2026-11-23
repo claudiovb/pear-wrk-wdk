@@ -70,7 +70,7 @@ async function getMnemonicFromEntropyHandler (request) {
     } catch (error) {
       throw createErrorWithCode(
         `Failed to decrypt entropy: ${error.message}`,
-        ERROR_CODES.BAD_REQUEST
+        ERROR_CODES.DECRYPTION_FAILED
       )
     }
 

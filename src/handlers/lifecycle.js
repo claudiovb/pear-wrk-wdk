@@ -115,7 +115,7 @@ async function initializeWdkHandler (init, context) {
       } catch (error) {
         throw createErrorWithCode(
           `Failed to decrypt seed: ${error.message}`,
-          ERROR_CODES.BAD_REQUEST
+          ERROR_CODES.DECRYPTION_FAILED
         )
       }
 
