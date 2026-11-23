@@ -1,5 +1,7 @@
 const { generateEntropyAndEncryptHandler, getMnemonicFromEntropyHandler, getSeedAndEntropyFromMnemonicHandler, initializeWdkHandler, resetWdkWallets, disposeWdkHandler, registerWalletHandler, registerProtocolHandler, callMethodHandler, createModuleRuntime } = require('./handlers')
 const rpcException = require('./exceptions/rpc-exception')
+const ERROR_CODES = require('./exceptions/error-codes')
+const { createErrorWithCode } = require('./utils/validation')
 
 /** @typedef {import('../types/rpc').RpcContext} RpcContext */
 
@@ -92,6 +94,11 @@ function registerRpcHandlers (rpc, context) {
     const moduleRuntime = createModuleRuntime({ moduleEvent: (event) => rpc.moduleEvent(event) }, context)
     context.moduleRuntime = moduleRuntime
     rpc.onCallModule(withErrorHandling(moduleRuntime.callModule))
+  } else {
+    // Still registered, so a host that calls it gets an answer instead of waiting forever.
+    rpc.onCallModule(withErrorHandling(async () => {
+      throw createErrorWithCode('No modules are bundled in this worklet', ERROR_CODES.BAD_REQUEST)
+    }))
   }
 }
 

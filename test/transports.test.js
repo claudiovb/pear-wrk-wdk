@@ -86,12 +86,21 @@ for (const [name, Transport] of TRANSPORTS) {
         wdkLoadError: null
       }
 
+      host = connect(context)
+    })
+
+    /**
+     * Register the handlers of a worklet behind a new pair of streams.
+     * @param {object} workletContext - The context the handlers run with.
+     * @returns {object} The host side of the pair.
+     */
+    function connect (workletContext) {
       const [hostStream, workletStream] = createPipePair()
 
-      registerRpcHandlers(new Transport(workletStream), context)
+      registerRpcHandlers(new Transport(workletStream), workletContext)
 
-      host = new Transport(hostStream)
-    })
+      return new Transport(hostStream)
+    }
 
     async function initializeWdk () {
       const { encryptionKey, encryptedSeedBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
@@ -159,6 +168,22 @@ for (const [name, Transport] of TRANSPORTS) {
         })
         assert.strictEqual(context.wdk, null)
         assert.deepStrictEqual(await host.ping(), {})
+      })
+    })
+
+    describe('callModule', () => {
+      test('should reject with BAD_REQUEST when no modules are bundled and keep answering', async () => {
+        const { moduleManagers, ...contextWithoutModules } = context
+        const hostWithoutModules = connect(contextWithoutModules)
+
+        const call = hostWithoutModules.callModule({ module: 'addressBook', method: 'list' })
+
+        await assertRejectsWith(call, {
+          code: 'BAD_REQUEST',
+          name: 'Error',
+          message: 'No modules are bundled in this worklet'
+        })
+        assert.deepStrictEqual(await hostWithoutModules.ping(), {})
       })
     })
 
