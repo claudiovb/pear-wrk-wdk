@@ -18,18 +18,34 @@ const { test, describe, beforeEach, mock } = require('node:test')
 const assert = require('node:assert')
 
 const HRPC = require('../generated/hrpc')
+const BareRPC = require('../generated/bare-rpc')
 const { registerRpcHandlers } = require('../src/rpc-handlers')
+const { decrypt } = require('../src/utils/crypto')
+const { schema: COMMANDS } = require('../src/hrpc/hrpc.json')
 const { createPipePair } = require('./helpers/pipe-pair')
 
 const TRANSPORTS = [
-  ['HRPC', HRPC]
+  ['HRPC', HRPC],
+  ['BareRPC', BareRPC]
 ]
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
 
+// The BIP-39 seed of MNEMONIC with no passphrase.
+const SEED = '5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4'
+
+// The entropy MNEMONIC is made from.
+const ENTROPY = '00000000000000000000000000000000'
+
+const BITCOIN_CONFIG = { host: 'electrum.example.com' }
+
+const BITCOIN_MANAGER = { name: 'bitcoin manager' }
+
+const VELORA_MANAGER = { name: 'velora manager' }
+
 const CONFIG = JSON.stringify({
   networks: {
-    bitcoin: { blockchain: 'bitcoin', config: { host: 'electrum.example.com' } }
+    bitcoin: { blockchain: 'bitcoin', config: BITCOIN_CONFIG }
   },
   modules: {
     addressBook: {}
@@ -58,14 +74,20 @@ async function assertRejectsWith (call, expected) {
 for (const [name, Transport] of TRANSPORTS) {
   describe(`${name} transport`, () => {
     let host
+    let worklet
     let context
     let wallet
     let account
     let protocol
     let addressBook
+    let emitModuleEvent
+    let registerWalletMock
+    let registerProtocolMock
     let disposeMock
 
     beforeEach(() => {
+      registerWalletMock = mock.fn()
+      registerProtocolMock = mock.fn()
       disposeMock = mock.fn()
       wallet = { getAccount: async () => account }
       protocol = {}
@@ -75,31 +97,41 @@ for (const [name, Transport] of TRANSPORTS) {
       context = {
         wdk: null,
         WDK: class {
-          registerWallet () {}
+          registerWallet (...args) { return registerWalletMock(...args) }
+          registerProtocol (...args) { return registerProtocolMock(...args) }
           getAccount (network, index) { return wallet.getAccount(network, index) }
           dispose (...args) { return disposeMock(...args) }
         },
-        walletManagers: { bitcoin: {} },
-        protocolManagers: {},
-        moduleManagers: { addressBook: { createModule: () => addressBook } },
+        walletManagers: { bitcoin: BITCOIN_MANAGER },
+        protocolManagers: { velora: VELORA_MANAGER },
+        moduleManagers: {
+          addressBook: {
+            createModule: ({ emit }) => {
+              emitModuleEvent = emit
+
+              return addressBook
+            }
+          }
+        },
         allowedModuleMethods: { addressBook: { methods: ['list', 'add'] } },
         wdkLoadError: null
       }
 
-      host = connect(context)
+      ;({ host, worklet } = connect(context))
     })
 
     /**
      * Register the handlers of a worklet behind a new pair of streams.
      * @param {object} workletContext - The context the handlers run with.
-     * @returns {object} The host side of the pair.
+     * @returns {{ host: object, worklet: object }} The two sides of the pair.
      */
     function connect (workletContext) {
       const [hostStream, workletStream] = createPipePair()
+      const workletSide = new Transport(workletStream)
 
-      registerRpcHandlers(new Transport(workletStream), workletContext)
+      registerRpcHandlers(workletSide, workletContext)
 
-      return new Transport(hostStream)
+      return { host: new Transport(hostStream), worklet: workletSide }
     }
 
     async function initializeWdk () {
@@ -107,6 +139,165 @@ for (const [name, Transport] of TRANSPORTS) {
 
       await host.initializeWDK({ encryptionKey, encryptedSeed: encryptedSeedBuffer, config: CONFIG })
     }
+
+    describe('commands', () => {
+      test('should have one method to call and one to register a handler for each command of hrpc.json', () => {
+        const expected = COMMANDS.flatMap((command) => {
+          const method = command.name.slice(command.name.indexOf('/') + 1)
+
+          return [method, `on${method[0].toUpperCase()}${method.slice(1)}`]
+        })
+
+        const methods = Object.getOwnPropertyNames(Transport.prototype)
+          .filter((property) => property !== 'constructor' && !property.startsWith('_'))
+
+        assert.deepStrictEqual(methods.sort(), expected.sort())
+      })
+    })
+
+    describe('workletStart', () => {
+      test('should resolve with the started status', async () => {
+        const result = await host.workletStart()
+
+        assert.deepStrictEqual(result, { status: 'started' })
+      })
+    })
+
+    describe('getSeedAndEntropyFromMnemonic', () => {
+      test('should resolve with the seed and the entropy of the mnemonic, encrypted, as buffers', async () => {
+        const result = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+        assert.deepStrictEqual(Object.keys(result).sort(), ['encryptedEntropyBuffer', 'encryptedSeedBuffer', 'encryptionKey'])
+        assert.strictEqual(decrypt(result.encryptedSeedBuffer, result.encryptionKey).toString('hex'), SEED)
+        assert.strictEqual(decrypt(result.encryptedEntropyBuffer, result.encryptionKey).toString('hex'), ENTROPY)
+      })
+    })
+
+    describe('getMnemonicFromEntropy', () => {
+      test('should resolve with the mnemonic the encrypted entropy was made from', async () => {
+        const { encryptionKey, encryptedEntropyBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+        const result = await host.getMnemonicFromEntropy({ encryptedEntropy: encryptedEntropyBuffer, encryptionKey })
+
+        assert.deepStrictEqual(result, { mnemonic: MNEMONIC })
+      })
+    })
+
+    describe('generateEntropyAndEncrypt', () => {
+      test('should resolve with the encrypted seed of a new 12 word mnemonic', async () => {
+        const result = await host.generateEntropyAndEncrypt({ wordCount: 12 })
+
+        const { mnemonic } = await host.getMnemonicFromEntropy({
+          encryptedEntropy: result.encryptedEntropyBuffer,
+          encryptionKey: result.encryptionKey
+        })
+        const fromMnemonic = await host.getSeedAndEntropyFromMnemonic({ mnemonic })
+
+        assert.strictEqual(mnemonic.split(' ').length, 12)
+        assert.deepStrictEqual(
+          decrypt(result.encryptedSeedBuffer, result.encryptionKey),
+          decrypt(fromMnemonic.encryptedSeedBuffer, fromMnemonic.encryptionKey)
+        )
+      })
+    })
+
+    describe('initializeWDK', () => {
+      test('should resolve with the initialized status and register the wallets on the decrypted seed', async () => {
+        const { encryptionKey, encryptedSeedBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+        const result = await host.initializeWDK({ encryptionKey, encryptedSeed: encryptedSeedBuffer, config: CONFIG })
+
+        assert.deepStrictEqual(result, { status: 'initialized' })
+        assert.strictEqual(context.wdkSeedBuffer.toString('hex'), SEED)
+        assert.deepStrictEqual(registerWalletMock.mock.calls.map((call) => call.arguments), [
+          ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG]
+        ])
+      })
+    })
+
+    describe('callMethod', () => {
+      test('should call the method of the account with the arguments and resolve with its result as JSON', async () => {
+        await initializeWdk()
+        account.sendTransaction = mock.fn(async () => ({ hash: 'f4184fc5', fee: 141 }))
+
+        const result = await host.callMethod({
+          methodName: 'sendTransaction',
+          network: 'bitcoin',
+          accountIndex: 0,
+          args: JSON.stringify({ to: 'bc1qexample', value: 1000 })
+        })
+
+        assert.deepStrictEqual(result, { result: '{"hash":"f4184fc5","fee":141}' })
+        assert.deepStrictEqual(account.sendTransaction.mock.calls.map((call) => call.arguments), [
+          [{ to: 'bc1qexample', value: 1000 }]
+        ])
+      })
+    })
+
+    describe('registerWallet', () => {
+      test('should register the wallet and resolve with the registered blockchains', async () => {
+        await initializeWdk()
+
+        const result = await host.registerWallet({
+          config: JSON.stringify({ bitcoin: { blockchain: 'bitcoin', config: BITCOIN_CONFIG } })
+        })
+
+        assert.deepStrictEqual(result, { status: 'registered', blockchains: '["bitcoin"]' })
+        assert.deepStrictEqual(registerWalletMock.mock.calls.map((call) => call.arguments), [
+          ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG],
+          ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG]
+        ])
+      })
+    })
+
+    describe('registerProtocol', () => {
+      test('should register the protocol and resolve with the registered status', async () => {
+        await initializeWdk()
+
+        const result = await host.registerProtocol({
+          config: JSON.stringify({ velora: { blockchain: 'bitcoin', protocolName: 'velora', config: { slippage: 1 } } })
+        })
+
+        assert.deepStrictEqual(result, { status: 'registered' })
+        assert.deepStrictEqual(registerProtocolMock.mock.calls.map((call) => call.arguments), [
+          ['bitcoin', 'velora', VELORA_MANAGER, { slippage: 1 }]
+        ])
+      })
+    })
+
+    describe('resetWdkWallets', () => {
+      test('should dispose the wallets of the config, register them again and resolve with the reset status', async () => {
+        await initializeWdk()
+
+        const result = await host.resetWdkWallets({ config: CONFIG })
+
+        assert.deepStrictEqual(result, { status: 'reset' })
+        assert.deepStrictEqual(disposeMock.mock.calls.map((call) => call.arguments), [[['bitcoin']]])
+        assert.deepStrictEqual(registerWalletMock.mock.calls.map((call) => call.arguments), [
+          ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG],
+          ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG]
+        ])
+      })
+    })
+
+    describe('events', () => {
+      test('should deliver a log sent by the worklet to the host', async () => {
+        const received = new Promise((resolve) => host.onLog(resolve))
+
+        worklet.log({ type: 2, data: 'Failed to reach the node' })
+
+        assert.deepStrictEqual(await received, { type: 2, data: 'Failed to reach the node' })
+      })
+
+      test('should deliver an event emitted by a module to the host', async () => {
+        await initializeWdk()
+        const received = new Promise((resolve) => host.onModuleEvent(resolve))
+
+        emitModuleEvent('changed', { contacts: 2 })
+
+        assert.deepStrictEqual(await received, { module: 'addressBook', event: 'changed', payload: '{"contacts":2}' })
+      })
+    })
 
     describe('ping', () => {
       test('should resolve with an empty object when called with no argument', async () => {
@@ -172,9 +363,23 @@ for (const [name, Transport] of TRANSPORTS) {
     })
 
     describe('callModule', () => {
+      test('should call the method of the module with the arguments and resolve with its result as JSON', async () => {
+        await initializeWdk()
+        addressBook.add = mock.fn(async () => ({ id: 7 }))
+
+        const result = await host.callModule({
+          module: 'addressBook',
+          method: 'add',
+          args: JSON.stringify([{ name: 'Alice' }])
+        })
+
+        assert.deepStrictEqual(result, { result: '{"id":7}' })
+        assert.deepStrictEqual(addressBook.add.mock.calls.map((call) => call.arguments), [[{ name: 'Alice' }]])
+      })
+
       test('should reject with BAD_REQUEST when no modules are bundled and keep answering', async () => {
         const { moduleManagers, ...contextWithoutModules } = context
-        const hostWithoutModules = connect(contextWithoutModules)
+        const { host: hostWithoutModules } = connect(contextWithoutModules)
 
         const call = hostWithoutModules.callModule({ module: 'addressBook', method: 'list' })
 

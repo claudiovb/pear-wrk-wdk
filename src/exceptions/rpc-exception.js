@@ -52,6 +52,16 @@ const DESCRIBED_KEYS = new Set(['name', 'message', 'stack', 'cause'])
 /** The codes of this worklet, as opposed to a code set by a library. */
 const OWN_CODES = new Set(Object.values(ERROR_CODES))
 
+/** The message reported when describing a thrown value fails. */
+const UNDESCRIBABLE_ERROR_MESSAGE = 'The error could not be described'
+
+/**
+ * The errors toRpcError has made, so that converting one of them again
+ * returns it as it is.
+ * @type {WeakSet<Error>}
+ */
+const RPC_ERRORS = new WeakSet()
+
 /**
  * An error thrown by code the worklet calls but does not own: a wallet, a
  * protocol or a module. It pairs the thrown value, kept as its cause, with
@@ -215,16 +225,34 @@ function createStructuredError (error, { defaultCode = ERROR_CODES.INTERNAL_ERRO
  * the JSON of the structured error and it carries the code as a property, so
  * the host also receives the code in the field the RPC layer reserves for it.
  * It is always a plain Error: the RPC layer does not answer a request whose
- * handler throws a TypeError, a SyntaxError or a RangeError.
+ * handler throws a TypeError, a SyntaxError or a RangeError, it rethrows it
+ * as an uncaught exception. For the same reason this function never throws:
+ * a value that cannot be described is reported as an INTERNAL_ERROR. An error
+ * this function returned is returned as it is when converted again.
  * @param {unknown} error - The thrown value.
  * @param {StructuredErrorOptions} [options]
  * @returns {Error & { code: ERROR_CODES }} The error to throw.
  */
 function toRpcError (error, options) {
-  const structuredError = createStructuredError(error, options)
+  if (RPC_ERRORS.has(error)) return error
 
-  const rpcError = new Error(JSON.stringify(structuredError))
-  rpcError.code = structuredError.code
+  let code
+  let message
+
+  try {
+    const structuredError = createStructuredError(error, options)
+
+    code = structuredError.code
+    message = JSON.stringify(structuredError)
+  } catch {
+    code = ERROR_CODES.INTERNAL_ERROR
+    message = JSON.stringify({ code, name: DEFAULT_ERROR_NAME, message: UNDESCRIBABLE_ERROR_MESSAGE })
+  }
+
+  const rpcError = new Error(message)
+  rpcError.code = code
+
+  RPC_ERRORS.add(rpcError)
 
   return rpcError
 }

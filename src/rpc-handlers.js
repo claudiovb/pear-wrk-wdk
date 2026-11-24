@@ -4,10 +4,12 @@ const ERROR_CODES = require('./exceptions/error-codes')
 const { createErrorWithCode } = require('./utils/validation')
 
 /** @typedef {import('../types/rpc').RpcContext} RpcContext */
+/** @typedef {import('../types/hrpc/hrpc').HRPC} HRPC */
+/** @typedef {import('../types/bare-rpc').BareRPC} BareRPC */
 
 /**
  * Register all RPC handlers with the provided RPC instance
- * @param {any} rpc - The HRPC instance
+ * @param {HRPC | BareRPC} rpc - The transport: an instance of either generated class
  * @param {RpcContext} context - Context object containing state and dependencies
  */
 function registerRpcHandlers (rpc, context) {

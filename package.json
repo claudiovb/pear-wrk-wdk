@@ -28,6 +28,9 @@
   ],
   "dependencies": {
     "@scure/bip39": "^2.2.0",
+    "bare-abort-controller": "^1.1.2",
+    "bare-rpc": "^2.0.0",
+    "compact-encoding": "^3.3.0",
     "hrpc": "^4.3.2",
     "hyperschema": "^1.12.4"
   },
@@ -64,6 +67,10 @@
     "./hrpc": {
       "types": "./types/hrpc/hrpc.d.ts",
       "default": "./generated/hrpc/index.js"
+    },
+    "./bare-rpc": {
+      "types": "./types/bare-rpc.d.ts",
+      "default": "./generated/bare-rpc/index.js"
     }
   },
   "author": "Tether",

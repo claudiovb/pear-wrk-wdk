@@ -342,6 +342,29 @@ describe('toRpcError', () => {
       name: 'TypeError'
     })
   })
+
+  test('should return an error it made as it is when asked to convert it again', () => {
+    const rpcError = toRpcError(createErrorWithCode('Init must be an object', 'BAD_REQUEST'))
+
+    const convertedAgain = toRpcError(rpcError)
+
+    assert.strictEqual(convertedAgain, rpcError)
+  })
+
+  test('should return an INTERNAL_ERROR instead of throwing when the error cannot be described', () => {
+    const error = new Error('No unspent outputs available.')
+    Object.defineProperty(error, 'reason', { enumerable: true, get () { throw new TypeError('Cannot read the reason') } })
+
+    const rpcError = toRpcError(error)
+
+    assert.strictEqual(Object.getPrototypeOf(rpcError), Error.prototype)
+    assert.strictEqual(rpcError.code, 'INTERNAL_ERROR')
+    assert.deepStrictEqual(JSON.parse(rpcError.message), {
+      code: 'INTERNAL_ERROR',
+      name: 'Error',
+      message: 'The error could not be described'
+    })
+  })
 })
 
 describe('callExternal', () => {

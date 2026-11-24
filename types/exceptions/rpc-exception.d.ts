@@ -76,6 +76,8 @@ export function createStructuredError(
 /**
  * Convert a thrown value to the error a handler rejects with. Its message is
  * the JSON of the structured error and it carries the code as a property.
+ * It never throws: a value that cannot be described is reported as an
+ * INTERNAL_ERROR. An error it returned is returned as it is when converted again.
  */
 export function toRpcError(
   error: unknown,

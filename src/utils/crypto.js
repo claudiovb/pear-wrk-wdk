@@ -1,5 +1,6 @@
 // External dependencies
 const crypto = require('bare-crypto')
+const memzero = require('./memzero')
 
 /** @typedef {import('../../types/rpc').WdkEntropyResult} WdkEntropyResult */
 
@@ -21,27 +22,6 @@ const crypto = require('bare-crypto')
  *     everything they allocate, and zero all of it before returning, on
  *     every path — see src/utils/secret-scope.js.
  */
-
-/**
- * Securely zero out sensitive memory (memzero)
- * Note: In JavaScript/V8, this may not be fully effective due to garbage collection
- * and memory management, but it's still good practice for security-sensitive code.
- * @param {Buffer | Uint8Array | ArrayBuffer} buffer - Buffer to zero out
- */
-const memzero = (buffer) => {
-  if (!buffer) return
-
-  if (Buffer.isBuffer(buffer)) {
-    buffer.fill(0)
-  } else if (buffer instanceof Uint8Array) {
-    buffer.fill(0)
-  } else if (buffer instanceof ArrayBuffer) {
-    new Uint8Array(buffer).fill(0)
-  } else if (buffer.buffer instanceof ArrayBuffer) {
-    // Handle TypedArray views
-    new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength).fill(0)
-  }
-}
 
 /**
  * Encrypt data using AES-256-GCM

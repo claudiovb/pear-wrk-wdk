@@ -1,0 +1,184 @@
+const fs = require('fs')
+const path = require('path')
+
+/** The path of the hand-written runtime, as required from the generated file. */
+const RUNTIME_PATH = '../../src/bare-rpc/runtime'
+
+/**
+ * Built-in hyperschema types whose values JSON cannot carry as they are:
+ * bytes other than `buffer` (which crosses as a base64 string), big integers
+ * and dates. The generator refuses them rather than write a class that would
+ * send them as something else.
+ */
+const UNSUPPORTED_TYPES = new Set(['fixed32', 'fixed64', 'optionalBuffer', 'raw', 'bigint', 'biguint64', 'bigint64', 'date'])
+
+/** What a method name of the generated class has to look like. */
+const METHOD_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+/**
+ * Generates the bare-rpc class from schema.json and hrpc.json:
+ * - <outputDir>/index.js
+ *
+ * It has the same methods as the HRPC class: for each command of hrpc.json
+ * one to send it and one to register its handler. The payloads are the
+ * structs of schema.json as JSON, so the only thing read from schema.json is
+ * which fields of each struct are buffers.
+ *
+ * @param {Object} options
+ * @param {{ schema: Object[] }} options.schemaData - The parsed schema.json.
+ * @param {{ schema: Object[] }} options.hrpcData - The parsed hrpc.json.
+ * @param {string} options.outputDir - The directory the bare-rpc file is written to.
+ * @throws {Error} If a command or a struct uses something the bare-rpc transport does not carry.
+ */
+function generateBareRpc ({ schemaData, hrpcData, outputDir }) {
+  const structs = new Map()
+
+  for (const def of schemaData.schema) {
+    if (def.fields) structs.set(`@${def.namespace}/${def.name}`, def)
+  }
+
+  const commands = hrpcData.schema.map((command) => {
+    const name = command.name.slice(command.name.indexOf('/') + 1)
+
+    if (!METHOD_NAME.test(name)) {
+      throw new Error(`Command ${command.name}: "${name}" cannot be used as a method name`)
+    }
+
+    if (command.request.stream || (command.response && command.response.stream)) {
+      throw new Error(`Command ${command.name}: streams are not supported by the bare-rpc generator`)
+    }
+
+    if (!command.request.send && !command.response) {
+      throw new Error(`Command ${command.name}: a command that is not sent as an event needs a response`)
+    }
+
+    return {
+      id: command.id,
+      fqn: command.name,
+      name,
+      handlerName: `on${name[0].toUpperCase()}${name.slice(1)}`,
+      isEvent: command.request.send === true,
+      requestBufferFields: getBufferFields(structs, command.request.name),
+      responseBufferFields: command.response ? getBufferFields(structs, command.response.name) : null
+    }
+  })
+
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true })
+  }
+
+  fs.writeFileSync(path.join(outputDir, 'index.js'), renderClass(commands))
+  console.log('Generated generated/bare-rpc/index.js')
+}
+
+/**
+ * List the buffer fields of a struct.
+ * @param {Map<string, Object>} structs - The structs of schema.json, by fully-qualified name.
+ * @param {string} fqn - The fully-qualified name of the struct.
+ * @returns {string[]} The names of its fields of type `buffer`.
+ * @throws {Error} If the struct is unknown, or has a field the JSON payload cannot carry.
+ */
+function getBufferFields (structs, fqn) {
+  const struct = structs.get(fqn)
+
+  if (!struct) throw new Error(`Struct ${fqn} is not in schema.json`)
+
+  const bufferFields = []
+
+  for (const field of struct.fields) {
+    const where = `Struct ${fqn}, field "${field.name}"`
+
+    if (UNSUPPORTED_TYPES.has(field.type)) {
+      throw new Error(`${where}: the type ${field.type} is not supported by the bare-rpc generator`)
+    }
+
+    if (field.type === 'buffer') {
+      if (field.array) throw new Error(`${where}: an array of buffers is not supported by the bare-rpc generator`)
+
+      bufferFields.push(field.name)
+    } else if (structs.has(field.type)) {
+      // The codec converts the fields of the message itself, not those of a struct inside it.
+      if (getBufferFields(structs, field.type).length > 0) {
+        throw new Error(`${where}: a buffer inside a nested struct is not supported by the bare-rpc generator`)
+      }
+    }
+  }
+
+  return bufferFields
+}
+
+/**
+ * Write a call to json() for a list of buffer fields.
+ * @param {string[]} bufferFields - The buffer fields of the message.
+ * @param {boolean} zeroAfterEncode - Whether the codec zeroes the Buffers once encoded.
+ * @returns {string} The source of the call.
+ */
+function renderCodec (bufferFields, zeroAfterEncode) {
+  if (bufferFields.length === 0) return 'json()'
+
+  const fields = `[${bufferFields.map((field) => `'${field}'`).join(', ')}]`
+
+  return zeroAfterEncode ? `json(${fields}, { zeroAfterEncode: true })` : `json(${fields})`
+}
+
+/**
+ * Write the source of the generated file.
+ * @param {Object[]} commands - The commands, as prepared by generateBareRpc.
+ * @returns {string} The source.
+ */
+function renderClass (commands) {
+  let str = ''
+
+  str += '// This file is autogenerated by scripts/generators/bare-rpc.js\n'
+  str += '// from schema.json and src/hrpc/hrpc.json. Run `npm run gen:rpcs` to update it.\n'
+  str += '\n'
+  str += `const { BareRPCRuntime, json } = require('${RUNTIME_PATH}')\n`
+  str += '\n'
+  str += '// The codecs of each command. A codec is given the buffer fields of its\n'
+  str += '// struct, which cross as base64 strings. The codec of a response zeroes\n'
+  str += '// them once they are encoded.\n'
+  str += 'const CODECS = {\n'
+  str += commands.map((command) => {
+    let entry = ''
+
+    entry += `  ${command.name}: {\n`
+    entry += `    request: ${renderCodec(command.requestBufferFields, false)}`
+
+    if (command.responseBufferFields) {
+      entry += ',\n'
+      entry += `    response: ${renderCodec(command.responseBufferFields, true)}`
+    }
+
+    entry += '\n'
+    entry += '  }'
+
+    return entry
+  }).join(',\n')
+  str += '\n'
+  str += '}\n'
+  str += '\n'
+  str += 'class BareRPC extends BareRPCRuntime {\n'
+  str += commands.map((command) => {
+    let methods = ''
+
+    methods += `  // ${command.id} ${command.fqn}${command.isEvent ? ' (event)' : ''}\n`
+    methods += `  ${command.name} (args) {\n`
+    methods += command.isEvent
+      ? `    this._send(${command.id}, CODECS.${command.name}, args)\n`
+      : `    return this._call(${command.id}, CODECS.${command.name}, args)\n`
+    methods += '  }\n'
+    methods += '\n'
+    methods += `  ${command.handlerName} (responseFn) {\n`
+    methods += `    this._respond(${command.id}, CODECS.${command.name}, responseFn)\n`
+    methods += '  }\n'
+
+    return methods
+  }).join('\n')
+  str += '}\n'
+  str += '\n'
+  str += 'module.exports = BareRPC\n'
+
+  return str
+}
+
+module.exports = generateBareRpc

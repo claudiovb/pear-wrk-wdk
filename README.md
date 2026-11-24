@@ -156,6 +156,26 @@ const address = await hrpc.callMethod({
 })
 ```
 
+#### 3. The bare-rpc transport
+
+The same commands are also served over plain [`bare-rpc`](https://github.com/holepunchto/bare-rpc), for hosts that have a `bare-rpc` client but no HRPC one (Swift, Kotlin). `BareRPC` has the same methods as `HRPC` and is generated from the same two files, `schema.json` and `src/hrpc/hrpc.json`, so the worklet registers the same handlers on either:
+
+```javascript
+const BareRPC = require('@tetherto/pear-wrk-wdk/bare-rpc')
+
+// In the worklet
+registerRpcHandlers(new BareRPC(ipc), context)
+
+// In a JavaScript host
+const rpc = new BareRPC(ipc)
+const secrets = await rpc.generateEntropyAndEncrypt({ wordCount: 12 })
+```
+
+*   **Commands**: The command id is the `id` in `src/hrpc/hrpc.json`. `log` and `moduleEvent` are events (they have no response); the others are requests.
+*   **Payloads**: The request and the response are the structs of `schema.json` written as JSON. A field of type `buffer` is a base64 string. A request with no fields can be sent with no payload.
+*   **Errors**: The same as on HRPC, see [Errors](#errors). The `message` of the `bare-rpc` error is the JSON string and its `code` is the code.
+*   **Limits**: `new BareRPC(stream, { maxFrameSize, maxBufferedBytes })`. Both default to 16 MiB (`BareRPC.DEFAULT_MAX_FRAME_SIZE`, `BareRPC.DEFAULT_MAX_BUFFERED_BYTES`). A frame above `maxFrameSize` ends the session.
+
 ## API Reference
 
 ### Secrets & Security
