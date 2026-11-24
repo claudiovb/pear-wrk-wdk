@@ -65,8 +65,8 @@ The package has one export for each side, and one for each transport class:
 
 | Export | Where it runs | What it gives |
 |---|---|---|
-| `@tetherto/pear-wrk-wdk` | The host, outside Bare | `HRPC` |
-| `@tetherto/pear-wrk-wdk/worklet` | The worklet, inside Bare | `registerRpcHandlers`, `utils`, `exceptions` |
+| `@tetherto/pear-wrk-wdk` | The host and the build, outside Bare | `HRPC`, `createServerProvider` |
+| `@tetherto/pear-wrk-wdk/worklet` | The worklet, inside Bare | `registerRpcHandlers`, `createStart`, `utils`, `exceptions` |
 | `@tetherto/pear-wrk-wdk/hrpc` | Either side | The `HRPC` class |
 | `@tetherto/pear-wrk-wdk/bare-rpc` | Either side | The `BareRPC` class |
 
@@ -186,6 +186,41 @@ const secrets = await rpc.generateEntropyAndEncrypt({ wordCount: 12 })
 *   **Payloads**: The request and the response are the structs of `schema.json` written as JSON. A field of type `buffer` is a base64 string. A request with no fields can be sent with no payload.
 *   **Errors**: The same as on HRPC, see [Errors](#errors). The `message` of the `bare-rpc` error is the JSON string and its `code` is the code.
 *   **Limits**: `new BareRPC(stream, { maxFrameSize, maxBufferedBytes })`. Both default to 16 MiB (`BareRPC.DEFAULT_MAX_FRAME_SIZE`, `BareRPC.DEFAULT_MAX_BUFFERED_BYTES`). A frame above `maxFrameSize` ends the session.
+
+#### 4. Packing the worklet with bare-stow
+
+[`bare-stow`](https://github.com/holepunchto/bare-stow) packs the worklet and generates the code that starts it from the host. It needs two things from this package.
+
+The entry file of the bundle exports what `createStart` returns. `bare-stow` calls it when the worklet starts, with the transport already attached to the IPC, and calls the function it gets back before the worklet exits:
+
+```javascript
+/* src/worklet.js */
+const { createStart } = require('@tetherto/pear-wrk-wdk/worklet')
+
+const context = { /* the same context as in step 1 */ }
+
+module.exports = createStart(context)
+```
+
+*   **Start**: Registers the handlers of every command. The worklet is reported as ready once it has returned.
+*   **Stop**: Does what a full `dispose` does: disposes the WDK instance, zeroes the seed and closes the modules. If the WDK instance fails to dispose, it rejects with the error `dispose` would answer with.
+
+The transport is chosen where the bundle is built, by the server provider given to `bare-stow`. Only the code of that transport is packed:
+
+```javascript
+/* build script (Node) */
+const stow = require('bare-stow')
+const { createServerProvider } = require('@tetherto/pear-wrk-wdk')
+
+// 'bare-rpc' takes the limits of the session; 'hrpc' takes no options
+const server = createServerProvider('bare-rpc', { maxFrameSize: 4 * 1024 * 1024 })
+
+for await (const artifact of stow('./src/worklet.js', 'bare-kit', './out', { language: 'swift', client: 'bare-rpc', server })) {
+  console.log(artifact.url.href)
+}
+```
+
+The provider only generates the worklet side. The host side is the `client` option of `bare-stow`.
 
 ## API Reference
 

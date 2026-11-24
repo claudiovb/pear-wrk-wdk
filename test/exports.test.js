@@ -52,26 +52,28 @@ function filesIn (files, folders) {
 
 describe('exports', () => {
   describe('the root', () => {
-    test('should export HRPC and nothing else', () => {
+    test('should export HRPC and createServerProvider and nothing else', () => {
       const root = require('@tetherto/pear-wrk-wdk')
 
-      assert.deepStrictEqual(Object.keys(root), ['HRPC'])
+      assert.deepStrictEqual(Object.keys(root), ['HRPC', 'createServerProvider'])
       assert.strictEqual(root.HRPC, require('@tetherto/pear-wrk-wdk/hrpc'))
+      assert.strictEqual(typeof root.createServerProvider, 'function')
     })
 
     test('should load in a plain Node process, where bare-crypto is not available', () => {
       const output = execFileSync(process.execPath, ['-e', "console.log(Object.keys(require('@tetherto/pear-wrk-wdk')))"], { cwd: ROOT })
 
-      assert.strictEqual(output.toString().trim(), "[ 'HRPC' ]")
+      assert.strictEqual(output.toString().trim(), "[ 'HRPC', 'createServerProvider' ]")
     })
   })
 
   describe('./worklet', () => {
-    test('should export registerRpcHandlers, utils and exceptions and nothing else', () => {
+    test('should export registerRpcHandlers, createStart, utils and exceptions and nothing else', () => {
       const worklet = require('@tetherto/pear-wrk-wdk/worklet')
 
-      assert.deepStrictEqual(Object.keys(worklet), ['registerRpcHandlers', 'utils', 'exceptions'])
+      assert.deepStrictEqual(Object.keys(worklet), ['registerRpcHandlers', 'createStart', 'utils', 'exceptions'])
       assert.strictEqual(typeof worklet.registerRpcHandlers, 'function')
+      assert.strictEqual(typeof worklet.createStart, 'function')
       assert.deepStrictEqual(Object.keys(worklet.utils), ['crypto', 'logger', 'validation'])
       assert.deepStrictEqual(Object.keys(worklet.exceptions), ['errorCodes', 'rpcException'])
     })
