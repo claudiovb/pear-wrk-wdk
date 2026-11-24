@@ -61,6 +61,17 @@ While this package provides the core infrastructure, you typically don't need to
 
 If you are building a custom integration (e.g., for Desktop, Server, or a custom Bare embedding) and cannot use the pre-built tools, you can implement the architecture manually using the primitives in this package.
 
+The package has one export for each side, and one for each transport class:
+
+| Export | Where it runs | What it gives |
+|---|---|---|
+| `@tetherto/pear-wrk-wdk` | The host, outside Bare | `HRPC` |
+| `@tetherto/pear-wrk-wdk/worklet` | The worklet, inside Bare | `registerRpcHandlers`, `utils`, `exceptions` |
+| `@tetherto/pear-wrk-wdk/hrpc` | Either side | The `HRPC` class |
+| `@tetherto/pear-wrk-wdk/bare-rpc` | Either side | The `BareRPC` class |
+
+`./worklet` exports no transport class. The worklet requires the one it serves, from `./hrpc` or from `./bare-rpc`, so that its bundle carries the code of that transport only.
+
 #### 1. The Worklet Entry (Background Context)
 
 Create an entry file (e.g., `src/worklet.js`) for your background thread. This file configures *which* WDK modules are available. This script runs inside the Bare worklet environment.

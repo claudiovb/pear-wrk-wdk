@@ -52,7 +52,7 @@
       "default": "./index.js"
     },
     "./worklet": {
-      "types": "./types/index.d.ts",
+      "types": "./types/worklet.d.ts",
       "default": "./worklet.js"
     },
     "./diagnostics/handle-leak-check": {
