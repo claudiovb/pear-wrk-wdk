@@ -30,3 +30,4 @@ jobs:
       - run: npm run gen:rpcs
       - run: git diff --exit-code generated/
       - run: npm test
+      - run: npm run test:stow

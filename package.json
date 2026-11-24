@@ -13,6 +13,7 @@
     "lint:fix": "standard --fix",
     "test": "node --test test/**/*.test.js",
     "test:watch": "node --test --watch test/**/*.test.js",
+    "test:stow": "node --test test/stow.smoke.js",
     "gen:rpcs": "node scripts/generate-rpcs.js",
     "prepare": "npm run gen:rpcs"
   },
@@ -42,6 +43,11 @@
   },
   "devDependencies": {
     "bare-ipc": "^1.1.1",
+    "bare-sidecar": "^0.5.16",
+    "bare-stow": "^0.3.9",
+    "bare-stow-host": "^0.2.0",
+    "bare-stow-runtime": "^0.1.2",
+    "bare-wdk-runtime": "^3.0.1",
     "rimraf": "6.0.1",
     "standard": "17.1.2",
     "typescript": "5.8.3"
