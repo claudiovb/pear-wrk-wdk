@@ -61,7 +61,7 @@ exit from — which is what made it easy to miss in the first place.
 
 Because of this rule, **callers must zero what they own**.
 
-## The buffer boundary: HRPC vs. JSON-RPC
+## The buffer boundary: HRPC vs. bare-rpc
 
 - **Buffer is the first-class representation for secret material.**
   Secret-bearing fields are declared as `buffer` in `schema.json`, not
@@ -71,19 +71,28 @@ Because of this rule, **callers must zero what they own**.
   before putting secret data in a string. `mnemonic` is the one
   unavoidable exception (`@scure/bip39`'s API is string-in/string-out);
   everywhere else, prefer a Buffer.
-- **JSON-RPC cannot carry a binary type.** JSON has no binary type — this
-  is a known, permanent limitation of that transport, not a bug to fix.
-  `src/utils/buffer-fields.js` converts the affected fields to/from
-  base64 at that transport's boundary only, and zeroes each original
-  Buffer immediately after encoding it on the way out — closing the
-  window between a handler returning a secret and the response leaving
-  the process, for that transport. HRPC has no equivalent step: it never
-  passes through this module, so a handler's returned Buffers reach the
-  caller live, with cleanup left to that caller.
+- **The bare-rpc transport cannot carry a binary type.** Its payloads
+  are JSON, which has none — this is a known, permanent limitation of
+  that transport, not a bug to fix. `src/bare-rpc/runtime.js` converts
+  the `buffer` fields to/from base64 at that transport's boundary only,
+  and zeroes each Buffer of a response immediately after encoding it
+  (also when the encoding fails) — closing the window between a handler
+  returning a secret and the response leaving the process, for the
+  Buffer. What it cannot close is the text: on the way in, the JSON and
+  the base64 string of a field exist before its Buffer does, and on the
+  way out they exist after the Buffer is zeroed. They stay in memory
+  until the engine reuses it.
 - **HRPC is the first-class transport.** It carries these fields as real
-  Buffers end-to-end, with no string step at all. Any future transport
-  follows the same pattern: convert at its own boundary, never weaken
-  what HRPC guarantees.
+  Buffers end-to-end, with no string step at all. It has no step after
+  the handler either: its generated code encodes the response once the
+  handler has returned, so the Buffers a handler returns are not zeroed
+  by the worklet. Any future transport follows the same pattern: convert
+  at its own boundary, never weaken what HRPC guarantees.
+- **Neither transport zeroes the frames.** The bytes a request was read
+  from, and the bytes a response was written as, also pass through the
+  buffers of the RPC library and of the IPC stream. This package does
+  not own those and does not zero them.
+- **A host that must keep secret material out of strings uses HRPC.**
 
 ## The seed's lifecycle across `WDK`'s life
 
@@ -106,7 +115,7 @@ above, which exists for zeroing, not reuse).
 ## Logging and error messages
 
 No request or response is logged at the transport level, on either
-HRPC or JSON-RPC — not the payload, and not the method name. Transport
+transport — not the payload, and not the method name. Transport
 logs are errors only. Anything closer to secret material logs at
 `debug` (off by default), not `info`. Error messages report shape, not
 value — e.g. `validateMnemonic` reports which word position is invalid,

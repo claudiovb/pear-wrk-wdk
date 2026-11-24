@@ -20,7 +20,6 @@
   "files": [
     "index.js",
     "worklet.js",
-    "jsonrpc.js",
     "src",
     "types",
     "generated",
@@ -64,10 +63,6 @@
     "./diagnostics/handle-leak-check": {
       "types": "./types/diagnostics/handle-leak-check.d.ts",
       "default": "./src/diagnostics/handle-leak-check.js"
-    },
-    "./jsonrpc": {
-      "types": "./types/jsonrpc.d.ts",
-      "default": "./jsonrpc.js"
     },
     "./package.json": "./package.json",
     "./hrpc": {

@@ -103,11 +103,11 @@ describe('logger', () => {
     const INITIALIZE_WDK_PARAMS = "{ encryptionKey: 'a2V5', encryptedSeed: 'c2VlZA==', chains: ['ethereum'] }"
 
     test('should redact seed encryption material at the top level of a logged object', () => {
-      const { stdout } = runLogger({ LOG_LEVEL: 'INFO' }, `logger.info('JSON-RPC request: initializeWDK', ${INITIALIZE_WDK_PARAMS})`)
+      const { stdout } = runLogger({ LOG_LEVEL: 'INFO' }, `logger.info('RPC request: initializeWDK', ${INITIALIZE_WDK_PARAMS})`)
 
       assert.strictEqual(
         stdout,
-        "[INFO] JSON-RPC request: initializeWDK {\n  encryptionKey: '[redacted]',\n  encryptedSeed: '[redacted]',\n  chains: [ 'ethereum' ]\n}\n"
+        "[INFO] RPC request: initializeWDK {\n  encryptionKey: '[redacted]',\n  encryptedSeed: '[redacted]',\n  chains: [ 'ethereum' ]\n}\n"
       )
     })
 
@@ -136,30 +136,30 @@ describe('logger', () => {
     test('should redact and stringify objects on the JSC branch', () => {
       const { stdout } = runLogger(
         { LOG_LEVEL: 'INFO' },
-        `globalThis.Bare = { platform: 'ios' }; delete require.cache[require.resolve('${LOGGER_PATH}')]; const jsc = require('${LOGGER_PATH}'); jsc.info('JSON-RPC request: initializeWDK', ${INITIALIZE_WDK_PARAMS})`
+        `globalThis.Bare = { platform: 'ios' }; delete require.cache[require.resolve('${LOGGER_PATH}')]; const jsc = require('${LOGGER_PATH}'); jsc.info('RPC request: initializeWDK', ${INITIALIZE_WDK_PARAMS})`
       )
 
       assert.strictEqual(
         stdout,
-        '[INFO] JSON-RPC request: initializeWDK {"encryptionKey":"[redacted]","encryptedSeed":"[redacted]","chains":["ethereum"]}\n'
+        '[INFO] RPC request: initializeWDK {"encryptionKey":"[redacted]","encryptedSeed":"[redacted]","chains":["ethereum"]}\n'
       )
     })
   })
 
   describe('error formatting', () => {
     test('should log the stack trace of an Error on the default branch', () => {
-      const { stderr } = runLogger({}, "logger.error('JSON-RPC error: initializeWDK', new Error('boom'))")
+      const { stderr } = runLogger({}, "logger.error('RPC error: initializeWDK', new Error('boom'))")
 
-      assert.strictEqual(stderr.split('\n')[0], '[ERROR] JSON-RPC error: initializeWDK Error: boom')
+      assert.strictEqual(stderr.split('\n')[0], '[ERROR] RPC error: initializeWDK Error: boom')
     })
 
     test('should log the stack trace of an Error on the JSC branch instead of "{}"', () => {
       const { stderr } = runLogger(
         {},
-        `globalThis.Bare = { platform: 'ios' }; delete require.cache[require.resolve('${LOGGER_PATH}')]; const jsc = require('${LOGGER_PATH}'); jsc.error('JSON-RPC error: initializeWDK', new Error('boom'))`
+        `globalThis.Bare = { platform: 'ios' }; delete require.cache[require.resolve('${LOGGER_PATH}')]; const jsc = require('${LOGGER_PATH}'); jsc.error('RPC error: initializeWDK', new Error('boom'))`
       )
 
-      assert.strictEqual(stderr.split('\n')[0], '[ERROR] JSON-RPC error: initializeWDK Error: boom')
+      assert.strictEqual(stderr.split('\n')[0], '[ERROR] RPC error: initializeWDK Error: boom')
     })
   })
 })

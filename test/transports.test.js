@@ -346,6 +346,17 @@ for (const [name, Transport] of TRANSPORTS) {
         assert.deepStrictEqual(context.wdkSeedBuffer, seed)
       })
 
+      test('should dispose everything when the list of blockchains is empty', async () => {
+        await initializeWdk()
+
+        const result = await host.dispose({ blockchains: [] })
+
+        assert.deepStrictEqual(result, { status: 'disposed' })
+        assert.deepStrictEqual(disposeMock.mock.calls.map((call) => call.arguments), [[]])
+        assert.strictEqual(context.wdk, null)
+        assert.strictEqual(context.wdkSeedBuffer, null)
+      })
+
       test('should reject when the WDK fails to dispose and keep answering', async () => {
         await initializeWdk()
         disposeMock.mock.mockImplementation(() => { throw new Error('Socket already closed') })
@@ -376,6 +387,22 @@ for (const [name, Transport] of TRANSPORTS) {
         assert.deepStrictEqual(result, { result: '{"id":7}' })
         assert.deepStrictEqual(addressBook.add.mock.calls.map((call) => call.arguments), [[{ name: 'Alice' }]])
       })
+
+      for (const [kind, add] of [['a method', () => {}], ['an async method', async () => {}]]) {
+        test(`should resolve with null as JSON when ${kind} of the module returns nothing`, async () => {
+          await initializeWdk()
+          addressBook.add = mock.fn(add)
+
+          const result = await host.callModule({
+            module: 'addressBook',
+            method: 'add',
+            args: JSON.stringify([{ name: 'Alice' }])
+          })
+
+          assert.deepStrictEqual(result, { result: 'null' })
+          assert.deepStrictEqual(addressBook.add.mock.calls.map((call) => call.arguments), [[{ name: 'Alice' }]])
+        })
+      }
 
       test('should reject with BAD_REQUEST when no modules are bundled and keep answering', async () => {
         const { moduleManagers, ...contextWithoutModules } = context
@@ -442,6 +469,21 @@ for (const [name, Transport] of TRANSPORTS) {
           name: 'Error',
           message: 'Failed to decrypt entropy: Unsupported state or unable to authenticate data'
         })
+      })
+
+      test('should reject with METHOD_NOT_ALLOWED when the method of the account is not in the allowed list', async () => {
+        context.allowedMethods = { bitcoin: { methods: ['getAddress'] } }
+        await initializeWdk()
+        account.sendTransaction = mock.fn(async () => ({ hash: 'f4184fc5' }))
+
+        const call = host.callMethod({ methodName: 'sendTransaction', network: 'bitcoin', accountIndex: 0 })
+
+        await assertRejectsWith(call, {
+          code: 'METHOD_NOT_ALLOWED',
+          name: 'Error',
+          message: 'Method "sendTransaction" is not allowed for network "bitcoin".'
+        })
+        assert.strictEqual(account.sendTransaction.mock.callCount(), 0)
       })
 
       test('should reject with METHOD_NOT_ALLOWED when the method is not in the allowed list', async () => {

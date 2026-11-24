@@ -8,8 +8,6 @@ export enum ERROR_CODES {
   WDK_MANAGER_INIT = 'WDK_MANAGER_INIT',
   // The request is missing or not valid
   BAD_REQUEST = 'BAD_REQUEST',
-  // A JSON-RPC request reused the id of a request that is still running
-  DUPLICATE_REQUEST = 'DUPLICATE_REQUEST',
   // The method is not in the list of allowed methods
   METHOD_NOT_ALLOWED = 'METHOD_NOT_ALLOWED',
   // The seed or the entropy could not be decrypted with the given key

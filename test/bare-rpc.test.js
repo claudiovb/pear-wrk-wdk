@@ -104,6 +104,23 @@ describe('BareRPC', () => {
       })
     })
 
+    test('should give the handler a buffer field that is null or left out as it arrived', async () => {
+      let received
+      worklet.onInitializeWDK(async (init) => {
+        received = init
+
+        return { status: 'initialized' }
+      })
+
+      const response = await request(rpc, INITIALIZE_WDK, '{"encryptionKey":null,"config":"{\\"networks\\":{}}"}')
+
+      assert.strictEqual(response, '{"status":"initialized"}')
+      assert.deepStrictEqual(received, {
+        encryptionKey: null,
+        config: '{"networks":{}}'
+      })
+    })
+
     test('should send the buffer fields of a response as base64 strings and then zero them', async () => {
       const secrets = {
         encryptionKey: Buffer.from(ENCRYPTION_KEY),

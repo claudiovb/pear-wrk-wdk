@@ -12,8 +12,8 @@ const { createSecretScope } = require('../utils/secret-scope')
 /**
  * @param {WdkGenerateEntropyParams} request
  * @returns {Promise<WdkEntropyResult>} Return buffers, not zeroed by this
- *   handler. JSON-RPC zeroes them after base64-encoding (see
- *   buffer-fields.js); HRPC hands them back live with no interception
+ *   handler. The bare-rpc transport zeroes them once they are encoded (see
+ *   src/bare-rpc/runtime.js); HRPC hands them back live with no interception
  *   point in this repo, so zeroing them is that caller's responsibility.
  */
 async function generateEntropyAndEncryptHandler (request) {
@@ -95,7 +95,7 @@ async function getMnemonicFromEntropyHandler (request) {
  *   As a JS string, it cannot be zeroed and remains in the V8 heap after this call.
  * @returns {Promise<WdkEntropyResult>} Not zeroed by this handler — same
  *   transport-dependent handling as generateEntropyAndEncryptHandler:
- *   zeroed for JSON-RPC (buffer-fields.js), left live for HRPC.
+ *   zeroed by the bare-rpc transport (src/bare-rpc/runtime.js), left live for HRPC.
  */
 async function getSeedAndEntropyFromMnemonicHandler (request) {
   let { mnemonic } = request ?? {}
