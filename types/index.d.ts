@@ -1,4 +1,4 @@
-import { BareRPCOptions } from './bare-rpc';
+import BareRPC = require('./bare-rpc');
 
 export { HRPC } from './hrpc/hrpc';
 export * from './rpc';
@@ -39,5 +39,5 @@ export interface ServerProvider {
  * that transport, and the entry made by createStart (./worklet) receives an
  * instance of its class. The limits are for 'bare-rpc' only: HRPC has none.
  */
-export function createServerProvider(transport: 'bare-rpc', options?: BareRPCOptions): ServerProvider;
+export function createServerProvider(transport: 'bare-rpc', options?: BareRPC.BareRPCOptions): ServerProvider;
 export function createServerProvider(transport: 'hrpc'): ServerProvider;

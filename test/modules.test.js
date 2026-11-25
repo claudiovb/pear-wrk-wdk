@@ -135,10 +135,8 @@ describe('module runtime (generic)', () => {
     const errored = events.find((e) => e.event === 'error')
     assert.ok(errored, 'an error moduleEvent was emitted')
     assert.strictEqual(errored.module, 'boom')
-    const payload = JSON.parse(errored.payload)
-    assert.strictEqual(payload.name, 'Error')
-    assert.strictEqual(payload.message, 'construction failed')
-    assert.ok(payload.stack, 'error payload carries a stack for app devs')
+    // No stack: that is for a debug build only.
+    assert.deepStrictEqual(JSON.parse(errored.payload), { name: 'Error', message: 'construction failed' })
 
     // A failed module reports its construction error distinctly...
     await assert.rejects(
@@ -150,6 +148,25 @@ describe('module runtime (generic)', () => {
       () => rt.callModule({ module: 'ghost', method: 'x', args: '[]' }),
       /Module not initialized/
     )
+  })
+
+  test('the construction error event carries a stack in a debug build', async () => {
+    const events = []
+    const rpc = { moduleEvent: (p) => events.push(p) }
+    const context = {
+      moduleManagers: {
+        boom: { createModule: async () => { throw new Error('construction failed') } }
+      },
+      capabilities: {},
+      debug: true
+    }
+    const rt = createModuleRuntime(rpc, context)
+
+    await assert.rejects(() => rt.construct('boom', {}, SEED), /construction failed/)
+
+    const payload = JSON.parse(events.find((e) => e.event === 'error').payload)
+    assert.deepStrictEqual(Object.keys(payload), ['name', 'message', 'stack'])
+    assert.ok(payload.stack.startsWith('Error: construction failed\n'))
   })
 
   test('callModule awaits an async (pending) construction', async () => {

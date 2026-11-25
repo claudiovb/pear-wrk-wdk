@@ -46,9 +46,9 @@ export class HRPC {
 
   /**
    * @deprecated
-   * Start the worklet
+   * Start the worklet. The request has no fields: call it with no argument.
    */
-  workletStart(args: WorkletStartRequest): Promise<WorkletStartResponse>;
+  workletStart(args?: WorkletStartRequest): Promise<WorkletStartResponse>;
 
   /**
    * Initialize WDK
@@ -109,15 +109,17 @@ export class HRPC {
   ping(args?: PingRequest): Promise<PingResponse>;
 
   /**
-   * Register a handler for log messages
+   * Register a handler for log messages. The request has no required field,
+   * so the handler receives null when the peer sends none.
    */
-  onLog(responseFn: (request: LogRequest) => Promise<void>): void;
+  onLog(responseFn: (request: LogRequest | null) => Promise<void>): void;
 
   /**
-   * Register a handler for worklet start
+   * Register a handler for worklet start. The request has no fields, so the
+   * handler receives null.
    */
   onWorkletStart(
-    responseFn: (request: WorkletStartRequest) => Promise<WorkletStartResponse>
+    responseFn: (request: WorkletStartRequest | null) => Promise<WorkletStartResponse>
   ): void;
 
   /**
@@ -149,10 +151,11 @@ export class HRPC {
   ): void;
 
   /**
-   * Register a handler for dispose
+   * Register a handler for dispose. The request has no required field, so the
+   * handler receives null when the peer sends none.
    */
   onDispose(
-    responseFn: (request: DisposeRequest) => Promise<DisposeResponse>
+    responseFn: (request: DisposeRequest | null) => Promise<DisposeResponse>
   ): void;
 
   /**

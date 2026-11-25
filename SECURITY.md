@@ -126,14 +126,30 @@ error, its simple properties (`details`) and the same for each error in
 its `cause` chain (`causes`). Only strings, finite numbers and booleans
 are copied — never an object or an array, so a request or response body
 attached to an error stays in the worklet. The secret field names the
-logger redacts (`src/utils/secret-keys.js`) are skipped, strings are cut
-at 256 characters, and at most 16 properties of one error and 8 causes
-are reported.
+logger redacts (`src/utils/secret-keys.js`) are skipped, strings in
+`details` are cut at 256 characters, and at most 16 properties of one
+error and 8 causes are reported. The `name` and the `message` are always
+strings, cut at 128 and 4096 characters. A name that is not a string is
+not sent. A message that is not a string (a library can set an object
+there) is the one object that is serialized: it is sent as its JSON, cut
+at 256 characters, without those secret fields and without byte arrays.
 
-Stack traces are not returned. The one exception is a worklet built with
-`debug: true` in its context, which adds the `stack` of the thrown error
-and of each cause. The flag is part of the bundle: a host cannot turn it
-on at run time, and a production build must not set it.
+Stack traces are not returned in the error of a request. The one
+exception is a worklet built with `debug: true` in its context, which
+adds the `stack` of the thrown error and of each cause. The flag is part
+of the bundle: a host cannot turn it on at run time, and a production
+build must not set it.
+
+The `error` event of a module that fails to construct
+(`src/handlers/modules.js`) follows the same rule for the stack: it
+carries the name and the message of the failure, and the stack only in a
+debug build. Its name and message are sent as they are, without the cuts
+above.
+
+One thing reaches the host with a stack in every build: an error nobody
+catches ends the worklet. Under `bare-stow`, the runtime that started the
+worklet sends the message and the stack of that error to the host before
+it exits. This package does not see or change what is sent there.
 
 **When adding a log line or error message near secret material: if
 there's any doubt, log the shape (a field name, a count, a boolean), not

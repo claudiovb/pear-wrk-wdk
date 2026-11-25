@@ -117,6 +117,96 @@ describe('createStructuredError', () => {
     })
   })
 
+  test('should describe a thrown object that is not an error by its message and its simple properties', () => {
+    const thrown = { code: -32000, message: 'insufficient funds for gas * price + value', data: { from: '0x9858' } }
+
+    const structuredError = createStructuredError(thrown)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      name: 'Error',
+      message: 'insufficient funds for gas * price + value',
+      details: { code: -32000 }
+    })
+  })
+
+  test('should report an empty message for a thrown object that has none', () => {
+    const structuredError = createStructuredError({ status: 503 })
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      name: 'Error',
+      message: '',
+      details: { status: 503 }
+    })
+  })
+
+  test('should not report a name that is not a string', () => {
+    const error = new Error('Request failed')
+    error.name = { toString: () => 'sk-live-123' }
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      name: 'Error',
+      message: 'Request failed'
+    })
+  })
+
+  test('should report a message that is not a string as its JSON, without the secret fields and the byte arrays', () => {
+    const error = new Error('replaced below')
+    error.message = { status: 429, body: { error: 'rate limited', seed: 'abandon abandon' }, key: Buffer.from([1, 2, 3]), fee: 21000n }
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      name: 'Error',
+      message: '{"status":429,"body":{"error":"rate limited"},"fee":"21000"}'
+    })
+  })
+
+  test('should cut a message that is not a string at 256 characters', () => {
+    const error = new Error('replaced below')
+    error.message = { body: 'b'.repeat(500) }
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      name: 'Error',
+      message: '{"body":"' + 'b'.repeat(247)
+    })
+  })
+
+  test('should report an empty message when the message cannot be written as JSON', () => {
+    const error = new Error('replaced below')
+    error.message = {}
+    error.message.self = error.message
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      name: 'Error',
+      message: ''
+    })
+  })
+
+  test('should cut a message at 4096 characters and a name at 128', () => {
+    const error = new Error('m'.repeat(5000))
+    error.name = 'N'.repeat(200)
+
+    const structuredError = createStructuredError(error)
+
+    assert.deepStrictEqual(structuredError, {
+      code: 'INTERNAL_ERROR',
+      name: 'N'.repeat(128),
+      message: 'm'.repeat(4096)
+    })
+  })
+
   describe('details', () => {
     test('should copy the string, number and boolean properties of an error', () => {
       const error = Object.assign(createErrorWithCode('User operation rejected', 'BAD_REQUEST'), {
@@ -249,6 +339,20 @@ describe('createStructuredError', () => {
 
       assert.deepStrictEqual(structuredError.causes, [
         { name: 'Error', message: 'connect ECONNREFUSED 127.0.0.1:8545', details: { code: 'ECONNREFUSED', errno: -61 } }
+      ])
+    })
+
+    test('should not copy the fields of a cause that carry seed or encryption material', () => {
+      const cause = new Error('Request failed')
+      cause.encryptionKey = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='
+      cause.mnemonic = 'abandon abandon abandon'
+      cause.httpStatus = 500
+      const error = new Error('No unspent outputs available.', { cause })
+
+      const structuredError = createStructuredError(error)
+
+      assert.deepStrictEqual(structuredError.causes, [
+        { name: 'Error', message: 'Request failed', details: { httpStatus: 500 } }
       ])
     })
 

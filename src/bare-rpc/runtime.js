@@ -40,6 +40,12 @@ const DEFAULT_MAX_FRAME_SIZE = 16 * 1024 * 1024
 const DEFAULT_MAX_BUFFERED_BYTES = 16 * 1024 * 1024
 
 /**
+ * What a buffer field looks like on the wire once its line breaks and its
+ * padding are removed: base64, in the standard or the URL-safe alphabet.
+ */
+const BASE64 = /^[A-Za-z0-9+/_-]*$/
+
+/**
  * The options every command is registered with on the router. The router
  * then hands over the payload as it arrived and sends back what the handler
  * returns: decoding and encoding happen in _respond, in the same try as the
@@ -80,7 +86,8 @@ function json (bufferFields = [], { zeroAfterEncode = false } = {}) {
     /**
      * @param {Uint8Array | null} payload - The payload. An empty one is a message that was left out.
      * @returns {unknown} The message, or null if the payload is empty.
-     * @throws {Error} With the code BAD_REQUEST, if the payload is not valid JSON.
+     * @throws {Error} With the code BAD_REQUEST, if the payload is not valid JSON, or if one of
+     *   its buffer fields is not base64.
      */
     decode (payload) {
       if (payload === null || payload.byteLength === 0) return null
@@ -124,15 +131,35 @@ function buffersToBase64 (message, bufferFields) {
 
 /**
  * Replace the base64 strings in the buffer fields of a message by Buffers, in place.
+ *
+ * The text is checked here and not left to Buffer.from, which does not behave
+ * the same everywhere: on Bare it throws for a line break or a character that
+ * is not base64, and on Node it skips them and returns other bytes. Line
+ * breaks are accepted, because some encoders add them (MIME).
  * @param {unknown} message - The message.
  * @param {string[]} bufferFields - The buffer fields of the message.
  * @returns {unknown} The message.
+ * @throws {Error} With the code BAD_REQUEST, if a buffer field is a string that is not base64.
+ *   The Buffers made from the fields before it are zeroed.
  */
 function base64ToBuffers (message, bufferFields) {
   if (message === null || typeof message !== 'object') return message
 
   for (const field of bufferFields) {
-    if (typeof message[field] === 'string') message[field] = Buffer.from(message[field], 'base64')
+    if (typeof message[field] !== 'string') continue
+
+    const text = message[field].replace(/\s+/g, '').replace(/={1,2}$/, '')
+
+    if (!BASE64.test(text) || text.length % 4 === 1) {
+      zeroBuffers(message, bufferFields)
+
+      // The message names the field, never its text.
+      const error = new Error(`${field} must be a base64 string`)
+      error.code = ERROR_CODES.BAD_REQUEST
+      throw error
+    }
+
+    message[field] = Buffer.from(text, 'base64')
   }
 
   return message

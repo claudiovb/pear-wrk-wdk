@@ -213,6 +213,74 @@ for (const [name, Transport] of TRANSPORTS) {
           ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG]
         ])
       })
+
+      test('should keep the WDK instance and its seed when initialized again with a config only', async () => {
+        await initializeWdk()
+        const wdk = context.wdk
+
+        const result = await host.initializeWDK({ config: CONFIG })
+
+        assert.deepStrictEqual(result, { status: 'initialized' })
+        assert.strictEqual(context.wdk, wdk)
+        assert.strictEqual(context.wdkSeedBuffer.toString('hex'), SEED)
+        assert.deepStrictEqual(registerWalletMock.mock.calls.map((call) => call.arguments), [
+          ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG],
+          ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG]
+        ])
+      })
+
+      // A WDK instance keeps its seed by reference. Initializing again with a new
+      // seed zeroes the old one, so the old instance goes with it.
+      describe('again with a new seed, when it fails', () => {
+        const FAILURES = [
+          ['the new seed cannot be decrypted', { encryptionKey: WRONG_KEY, config: CONFIG }, {
+            code: 'DECRYPTION_FAILED',
+            name: 'Error',
+            message: 'Failed to decrypt seed: Unsupported state or unable to authenticate data'
+          }],
+          ['the config is not valid', { config: '{"networks":{}}' }, {
+            code: 'BAD_REQUEST',
+            name: 'Error',
+            message: 'At least one network configuration must be provided'
+          }]
+        ]
+
+        for (const [reason, overrides, expected] of FAILURES) {
+          test(`should discard the WDK instance and zero its seed when ${reason}`, async () => {
+            await initializeWdk()
+            const seed = context.wdkSeedBuffer
+            const { encryptionKey, encryptedSeedBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+            const call = host.initializeWDK({ encryptionKey, encryptedSeed: encryptedSeedBuffer, ...overrides })
+
+            await assertRejectsWith(call, expected)
+            assert.deepStrictEqual(seed, Buffer.alloc(64))
+            assert.strictEqual(context.wdk, null)
+            assert.strictEqual(context.wdkSeedBuffer, null)
+          })
+        }
+
+        const NEXT_CALLS = [
+          ['registerWallet', (rpc) => rpc.registerWallet({ config: JSON.stringify(JSON.parse(CONFIG).networks) }), 'WDK not initialized. Call initializeWDK first.'],
+          ['resetWdkWallets', (rpc) => rpc.resetWdkWallets({ config: CONFIG }), 'WDK must be initialized with a seed before module reset.'],
+          ['initializeWDK with a config only', (rpc) => rpc.initializeWDK({ config: CONFIG }), 'WDK must be initialized with a seed before module registration.']
+        ]
+
+        for (const [name, next, message] of NEXT_CALLS) {
+          test(`should then reject ${name} with WDK_MANAGER_INIT and register no wallet`, async () => {
+            await initializeWdk()
+            const { encryptedSeedBuffer } = await host.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+            await assert.rejects(host.initializeWDK({ encryptionKey: WRONG_KEY, encryptedSeed: encryptedSeedBuffer, config: CONFIG }))
+
+            const call = next(host)
+
+            await assertRejectsWith(call, { code: 'WDK_MANAGER_INIT', name: 'Error', message })
+            assert.deepStrictEqual(registerWalletMock.mock.calls.map((call) => call.arguments), [
+              ['bitcoin', BITCOIN_MANAGER, BITCOIN_CONFIG]
+            ])
+          })
+        }
+      })
     })
 
     describe('callMethod', () => {
@@ -357,6 +425,23 @@ for (const [name, Transport] of TRANSPORTS) {
         assert.strictEqual(context.wdkSeedBuffer, null)
       })
 
+      test('should discard the WDK instance and zero its seed before closing the modules', async () => {
+        await initializeWdk()
+        const seed = context.wdkSeedBuffer
+        const neverCloses = new Promise(() => {})
+        addressBook.close = mock.fn(() => neverCloses)
+
+        host.dispose({})
+        // The dispose is still waiting for the module when a later call is answered.
+        await host.ping()
+        await host.ping()
+
+        assert.strictEqual(addressBook.close.mock.callCount(), 1)
+        assert.deepStrictEqual(disposeMock.mock.calls.map((call) => call.arguments), [[]])
+        assert.deepStrictEqual(seed, Buffer.alloc(64))
+        assert.strictEqual(context.wdk, null)
+      })
+
       test('should reject when the WDK fails to dispose and keep answering', async () => {
         await initializeWdk()
         disposeMock.mock.mockImplementation(() => { throw new Error('Socket already closed') })
@@ -370,6 +455,34 @@ for (const [name, Transport] of TRANSPORTS) {
         })
         assert.strictEqual(context.wdk, null)
         assert.deepStrictEqual(await host.ping(), {})
+      })
+    })
+
+    // A host can send a call before the answer to the last one. The calls that
+    // change the WDK instance must then run one after the other.
+    describe('calls that overlap', () => {
+      test('should dispose the first WDK instance and zero its seed when a second initializeWDK is sent before the first has answered', async () => {
+        const seeds = []
+        const { host: recordingHost } = connect({
+          ...context,
+          WDK: class extends context.WDK {
+            constructor (seed) {
+              super()
+              seeds.push(seed)
+            }
+          }
+        })
+        const first = await recordingHost.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+        const second = await recordingHost.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+        const results = await Promise.all([
+          recordingHost.initializeWDK({ encryptionKey: first.encryptionKey, encryptedSeed: first.encryptedSeedBuffer, config: CONFIG }),
+          recordingHost.initializeWDK({ encryptionKey: second.encryptionKey, encryptedSeed: second.encryptedSeedBuffer, config: CONFIG })
+        ])
+
+        assert.deepStrictEqual(results, [{ status: 'initialized' }, { status: 'initialized' }])
+        assert.deepStrictEqual(disposeMock.mock.calls.map((call) => call.arguments), [[]])
+        assert.deepStrictEqual(seeds.map((seed) => seed.toString('hex')), ['00'.repeat(64), SEED])
       })
     })
 
@@ -420,6 +533,24 @@ for (const [name, Transport] of TRANSPORTS) {
     })
 
     describe('error codes', () => {
+      test('should reject with WDK_MANAGER_INIT and the load error as its cause when the WDK failed to load', async () => {
+        const { WDK, ...contextWithoutWdk } = context
+        const loadError = new Error("Cannot find module '@tetherto/wdk'")
+        const { host: hostWithoutWdk } = connect({ ...contextWithoutWdk, wdkLoadError: loadError })
+        const { encryptionKey, encryptedSeedBuffer } = await hostWithoutWdk.getSeedAndEntropyFromMnemonic({ mnemonic: MNEMONIC })
+
+        const call = hostWithoutWdk.initializeWDK({ encryptionKey, encryptedSeed: encryptedSeedBuffer, config: CONFIG })
+
+        await assertRejectsWith(call, {
+          code: 'WDK_MANAGER_INIT',
+          name: 'Error',
+          message: "WDK failed to load: Cannot find module '@tetherto/wdk'",
+          causes: [
+            { name: 'Error', message: "Cannot find module '@tetherto/wdk'" }
+          ]
+        })
+      })
+
       test('should reject with WDK_MANAGER_INIT when the WDK is not initialized', async () => {
         const call = host.callMethod({ methodName: 'getAddress', network: 'bitcoin', accountIndex: 0 })
 
@@ -486,7 +617,7 @@ for (const [name, Transport] of TRANSPORTS) {
         assert.strictEqual(account.sendTransaction.mock.callCount(), 0)
       })
 
-      test('should reject with METHOD_NOT_ALLOWED when the method is not in the allowed list', async () => {
+      test('should reject with METHOD_NOT_ALLOWED when the method of the module is not in the allowed list', async () => {
         await initializeWdk()
 
         const call = host.callModule({ module: 'addressBook', method: 'remove' })

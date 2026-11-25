@@ -1,4 +1,4 @@
-import { BareRPC } from './bare-rpc';
+import BareRPC = require('./bare-rpc');
 import { HRPC } from './hrpc/hrpc';
 import { RpcContext } from './rpc';
 

@@ -26,7 +26,7 @@ const mockRpc = {
   onRegisterProtocol: function (handler) { this.handlers.registerProtocol = handler },
   onDispose: function (handler) { this.handlers.dispose = handler },
   onResetWdkWallets: function (handler) { this.handlers.resetWdkWallets = handler },
-  // Generic module subsystem (only wired when context.moduleManagers is set).
+  // Generic module subsystem. Always registered: it answers BAD_REQUEST when no modules are bundled.
   onCallModule: function (handler) { this.handlers.callModule = handler },
   moduleEvent: function (payload) { (this.events ||= []).push(payload) }
 }
@@ -329,6 +329,40 @@ describe('RPC Handlers', () => {
   })
 
   describe('initializeWDK', () => {
+    test('should zero the key and the encrypted seed of the request when the WDK failed to load', async () => {
+      context.WDK = undefined
+      context.wdkLoadError = new Error("Cannot find module '@tetherto/wdk'")
+      registerRpcHandlers(mockRpc, context)
+      const encryptionKey = Buffer.alloc(32, 1)
+      const encryptedSeed = Buffer.alloc(92, 2)
+
+      const call = mockRpc.handlers.initializeWDK({ encryptionKey, encryptedSeed, config: '{"networks":{}}' })
+
+      await assert.rejects(call, { code: 'WDK_MANAGER_INIT' })
+      assert.deepStrictEqual(encryptionKey, Buffer.alloc(32))
+      assert.deepStrictEqual(encryptedSeed, Buffer.alloc(92))
+    })
+
+    test('should reject with WDK_MANAGER_INIT and keep no instance when the WDK cannot be constructed', async () => {
+      context.WDK = class ThrowingWDK {
+        constructor () {
+          throw new Error('Seed must be 64 bytes')
+        }
+      }
+      registerRpcHandlers(mockRpc, context)
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = JSON.stringify({ networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } } })
+
+      const call = mockRpc.handlers.initializeWDK({ config, encryptionKey: seedData.encryptionKey, encryptedSeed: seedData.encryptedSeedBuffer })
+
+      await assert.rejects(call, (error) => {
+        assert.deepStrictEqual(JSON.parse(error.message), { code: 'WDK_MANAGER_INIT', name: 'Error', message: 'Seed must be 64 bytes' })
+        return true
+      })
+      assert.strictEqual(context.wdk, null)
+    })
+
     test('should initialize WDK with valid config', async () => {
       registerRpcHandlers(mockRpc, context)
 
@@ -926,6 +960,45 @@ describe('RPC Handlers', () => {
   })
 
   describe('dispose', () => {
+    test('should reject with BAD_REQUEST and dispose nothing when blockchains is not a list', async () => {
+      registerRpcHandlers(mockRpc, context)
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = JSON.stringify({ networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } } })
+      await mockRpc.handlers.initializeWDK({ config, encryptionKey: seedData.encryptionKey, encryptedSeed: seedData.encryptedSeedBuffer })
+      const wdk = context.wdk
+
+      const call = mockRpc.handlers.dispose({ blockchains: 'ethereum' })
+
+      await assert.rejects(call, (error) => {
+        assert.strictEqual(error.code, 'BAD_REQUEST')
+        assert.deepStrictEqual(JSON.parse(error.message), {
+          code: 'BAD_REQUEST',
+          name: 'Error',
+          message: 'blockchains must be a list of blockchain names'
+        })
+        return true
+      })
+      assert.strictEqual(context.wdk, wdk)
+      assert.deepStrictEqual(Object.keys(context.wdk.wallets), ['ethereum'])
+    })
+
+    test('should dispose what an initializeWDK created when it is called before the initializeWDK has answered', async () => {
+      registerRpcHandlers(mockRpc, context)
+      const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      const seedData = await mockRpc.handlers.getSeedAndEntropyFromMnemonic({ mnemonic })
+      const config = JSON.stringify({ networks: { ethereum: { blockchain: 'ethereum', config: { rpcUrl: 'https://eth.example.com' } } } })
+
+      // Both are called in the same turn, as when their two frames arrive together.
+      const initialized = mockRpc.handlers.initializeWDK({ config, encryptionKey: seedData.encryptionKey, encryptedSeed: seedData.encryptedSeedBuffer })
+      const disposed = mockRpc.handlers.dispose({})
+
+      assert.deepStrictEqual(await initialized, { status: 'initialized' })
+      assert.deepStrictEqual(await disposed, { status: 'disposed' })
+      assert.strictEqual(context.wdk, null)
+      assert.strictEqual(context.wdkSeedBuffer, null)
+    })
+
     test('should dispose WDK instance', async () => {
       registerRpcHandlers(mockRpc, context)
 

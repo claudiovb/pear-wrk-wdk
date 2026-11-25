@@ -31,6 +31,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 
+const RPC = require('bare-rpc')
 const stow = require('bare-stow')
 const Sidecar = require('bare-sidecar')
 
@@ -52,6 +53,10 @@ const HOST = `${process.platform}-${process.arch}`
 const READY_TIMEOUT = 30000
 
 const TEST_TIMEOUT = 60000
+
+// The ids of the commands sent by hand below, as src/hrpc/hrpc.json assigns them.
+const INITIALIZE_WDK = 6
+const GET_SEED_AND_ENTROPY_FROM_MNEMONIC = 7
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
 
@@ -92,10 +97,12 @@ for (const [transport, Transport] of TRANSPORTS) {
 
     /**
      * Start the packed worklet through the harness bare-stow generated.
+     * @param {(ipc: object) => object} [connect] - Makes the host side of the transport on the
+     *   IPC. The class of the transport by default.
      * @returns {Promise<{ rpc: object, ipc: object }>} The host side of the transport, and the
      *   IPC of bare-stow under it.
      */
-    async function start () {
+    async function start (connect = (ipc) => new Transport(ipc)) {
       const harness = require(out)
 
       sidecar = new Sidecar(path.join(out, 'index.bundle'), { stdio: ['ignore', 'pipe', 'inherit'] })
@@ -105,7 +112,7 @@ for (const [transport, Transport] of TRANSPORTS) {
 
       const { ipc } = await harness.connect(sidecar, { timeout: READY_TIMEOUT })
 
-      return { rpc: new Transport(ipc), ipc }
+      return { rpc: connect(ipc), ipc }
     }
 
     /**
@@ -166,5 +173,35 @@ for (const [transport, Transport] of TRANSPORTS) {
       assert.deepStrictEqual(await rpc.ping(), {})
       assert.strictEqual((await terminate(ipc)).exitCode, 0)
     })
+
+    if (transport === 'bare-rpc') {
+      // Bare and Node do not decode base64 the same way, so this is checked where it runs.
+      test('should read base64 that is broken into lines, and answer BAD_REQUEST for text that is not base64', { timeout: TEST_TIMEOUT }, async () => {
+        const { rpc: session, ipc } = await start((ipc) => new RPC(ipc))
+        const send = async (command, payload) => {
+          const request = session.request(command)
+          request.send(Buffer.from(JSON.stringify(payload)))
+
+          return JSON.parse(Buffer.from(await request.reply()).toString())
+        }
+        const secrets = await send(GET_SEED_AND_ENTROPY_FROM_MNEMONIC, { mnemonic: MNEMONIC })
+        const inLines = (text) => text.replace(/(.{76})/g, '$1\r\n')
+
+        const initialized = await send(INITIALIZE_WDK, {
+          encryptionKey: inLines(secrets.encryptionKey),
+          encryptedSeed: inLines(secrets.encryptedSeedBuffer),
+          config: CONFIG
+        })
+        const notBase64 = send(INITIALIZE_WDK, { encryptionKey: secrets.encryptionKey, encryptedSeed: 'not*base64', config: CONFIG })
+
+        assert.strictEqual(secrets.encryptedSeedBuffer.length > 76, true)
+        assert.deepStrictEqual(initialized, { status: 'initialized' })
+        await assert.rejects(notBase64, {
+          code: 'BAD_REQUEST',
+          message: '{"code":"BAD_REQUEST","name":"Error","message":"encryptedSeed must be a base64 string"}'
+        })
+        assert.strictEqual((await terminate(ipc)).exitCode, 0)
+      })
+    }
   })
 }

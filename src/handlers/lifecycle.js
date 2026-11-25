@@ -1,5 +1,5 @@
 const ERROR_CODES = require('../exceptions/error-codes')
-const { callExternal } = require('../exceptions/rpc-exception')
+const { callExternal, ExternalError } = require('../exceptions/rpc-exception')
 const { decrypt, memzero } = require('../utils/crypto')
 const { createSecretScope } = require('../utils/secret-scope')
 const logger = require('../utils/logger')
@@ -31,6 +31,20 @@ function releaseWdkSeedBuffer (context) {
 }
 
 /**
+ * Discard the WDK instance together with its seed.
+ *
+ * The two always go together: WDK keeps the seed buffer it was constructed
+ * with, by reference, for its whole life, so an instance does not outlive
+ * its seed. Every handler answers that the WDK is not initialized until a
+ * new one is made.
+ * @param {RpcContext} context
+ */
+function discardWdk (context) {
+  context.wdk = null
+  releaseWdkSeedBuffer(context)
+}
+
+/**
  *
  * @param {WdkInitializeParams} init
  * @param {RpcContext} context
@@ -46,18 +60,23 @@ async function initializeWdkHandler (init, context) {
     )
   }
 
-  if (!WDK) {
-    const errorMsg = wdkLoadError
-      ? `WDK failed to load: ${wdkLoadError.message}\nStack: ${wdkLoadError.stack || 'No stack trace'}`
-      : 'WDK not loaded - unknown error during initialization'
-    throw createErrorWithCode(errorMsg, ERROR_CODES.WDK_MANAGER_INIT)
-  }
-
   const scope = createSecretScope()
 
   try {
     scope.track(init.encryptedSeed)
     scope.track(init.encryptionKey)
+
+    if (!WDK) {
+      const failure = createErrorWithCode(
+        wdkLoadError ? `WDK failed to load: ${wdkLoadError.message}` : 'WDK not loaded - unknown error during initialization',
+        ERROR_CODES.WDK_MANAGER_INIT
+      )
+
+      // Reported with the causes. Its stack is only sent in a debug build.
+      if (wdkLoadError) failure.cause = wdkLoadError
+
+      throw failure
+    }
 
     if (wdk) {
       logger.info('Disposing existing WDK instance...')
@@ -65,8 +84,10 @@ async function initializeWdkHandler (init, context) {
       if (context.moduleRuntime) await context.moduleRuntime.closeAll()
       await callExternal(ERROR_CODES.WALLET_ERROR, () => wdk.dispose())
       // Wipe only when replacing the seed; config-only re-init reuses it.
+      // The instance goes with its seed: if anything below fails, nothing
+      // is left to register a wallet on.
       if (init.encryptedSeed && init.encryptionKey) {
-        releaseWdkSeedBuffer(context)
+        discardWdk(context)
       }
     }
 
@@ -129,7 +150,14 @@ async function initializeWdkHandler (init, context) {
         }
       }
 
-      context.wdk = await callExternal(ERROR_CODES.WDK_MANAGER_INIT, () => new WDK(decryptedSeedBuffer))
+      // Created and stored in the same step. With an await between the two,
+      // a dispose sent right behind this call finds no instance, answers,
+      // and the instance is stored after it. Might be not needed after tetherto/pear-wrk-wdk#88 when we add atomic lifecycle
+      try {
+        context.wdk = new WDK(decryptedSeedBuffer)
+      } catch (error) {
+        throw new ExternalError(ERROR_CODES.WDK_MANAGER_INIT, error)
+      }
       // WDK retains this buffer and never zeroes it itself (see
       // releaseWdkSeedBuffer) — release it from the scope so close()
       // doesn't zero out live wallet key material. From here on it
@@ -280,34 +308,32 @@ async function resetWdkWallets (params, context) {
  * @param {{ blockchains?: string[] }} [request] - Optional list of blockchains to
  *   dispose. Omit to dispose the entire WDK instance.
  * @param {RpcContext} context
+ * @throws {Error} With the code BAD_REQUEST, if `blockchains` is given and is not a list.
  */
 async function disposeWdkHandler (request, context) {
-  // A non-empty array means a targeted dispose; anything else (omitted, empty
-  // array, non-array) falls back to the legacy "dispose everything" behavior.
+  // A value that is not a list is refused: read as "no list", it would dispose everything.
+  if (request && request.blockchains != null && !Array.isArray(request.blockchains)) {
+    throw createErrorWithCode('blockchains must be a list of blockchain names', ERROR_CODES.BAD_REQUEST)
+  }
+
+  // A non-empty array means a targeted dispose; omitted or an empty array
+  // falls back to the legacy "dispose everything" behavior.
   const blockchains = request && Array.isArray(request.blockchains) && request.blockchains.length > 0
     ? request.blockchains
     : undefined
 
-  // Full dispose only: tear down hosted modules so their resources don't leak on
-  // lock. A targeted per-blockchain dispose leaves the wallet — and its modules — running.
-  if (!blockchains && context.moduleRuntime && typeof context.moduleRuntime.closeAll === 'function') {
-    await context.moduleRuntime.closeAll()
-  }
-
-  if (!context.wdk) {
-    return { status: 'disposed' }
-  }
-
   if (blockchains) {
-    await callExternal(ERROR_CODES.WALLET_ERROR, () => context.wdk.dispose(blockchains))
+    if (context.wdk) await callExternal(ERROR_CODES.WALLET_ERROR, () => context.wdk.dispose(blockchains))
   } else {
     try {
-      await callExternal(ERROR_CODES.WALLET_ERROR, () => context.wdk.dispose())
+      if (context.wdk) await callExternal(ERROR_CODES.WALLET_ERROR, () => context.wdk.dispose())
     } finally {
       // Even if dispose() throws, don't leave a half-torn-down wdk in
       // place or the seed buffer unwiped.
-      context.wdk = null
-      releaseWdkSeedBuffer(context)
+      discardWdk(context)
+      // Full dispose only: tear down hosted modules so their resources don't leak on
+      // lock. A targeted per-blockchain dispose leaves the wallet — and its modules — running.
+      if (context.moduleRuntime) await context.moduleRuntime.closeAll()
     }
   }
 

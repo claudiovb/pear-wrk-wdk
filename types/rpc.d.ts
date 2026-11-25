@@ -57,7 +57,7 @@ export interface RpcContext {
   protocolManagers: Record<string, unknown>;
 
   // WDK load error (if any)
-  wdkLoadError: any;
+  wdkLoadError?: any;
 
   // Generic module managers (from the bundler-generated entry). Optional.
   moduleManagers?: Record<string, WdkModuleManager>;
@@ -72,7 +72,8 @@ export interface RpcContext {
   capabilities?: Record<string, any>;
 
   // Set by a debug build only: the errors returned to the host then also
-  // carry the stack trace of the thrown error and of each of its causes.
+  // carry the stack trace of the thrown error and of each of its causes,
+  // and so does the `error` event of a module that fails to construct.
   // Off by default. It is part of the bundle, so a host cannot turn it on.
   debug?: boolean;
 

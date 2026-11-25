@@ -264,7 +264,7 @@ A host that is not JavaScript talks to a worklet that serves `bare-rpc` with a `
 
 **Payloads.** The payload of a request or a response is its fields as one JSON object, in UTF-8.
 
-*   A field of type `buffer` (the keys and the encrypted seed and entropy) is a base64 string.
+*   A field of type `buffer` (the keys and the encrypted seed and entropy) is a base64 string. The worklet writes standard base64 with padding. It reads the standard and the URL-safe alphabet, with or without padding, and ignores line breaks. Anything else is answered with `BAD_REQUEST`.
 *   `accountIndex` and `wordCount` are numbers. `blockchains` in the request of `dispose` is an array of strings.
 *   `config`, `args`, `options`, `result`, `payload` and the `blockchains` of the `registerWallet` response are strings that hold JSON, as they are over HRPC. They are not parsed or built by the transport.
 *   A request that has no fields, or whose fields are all left out, can be sent with no payload.

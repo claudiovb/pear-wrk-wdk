@@ -17,12 +17,11 @@ require('./setup.js')
 
 const { test } = require('node:test')
 const assert = require('node:assert')
-const { Duplex } = require('streamx')
-const b4a = require('b4a')
 const { EventEmitter } = require('events')
 
 const HRPC = require('../generated/hrpc')
 const { registerRpcHandlers } = require('../src/rpc-handlers')
+const { createPipePair } = require('./helpers/pipe-pair')
 
 class FakeModule extends EventEmitter {
   constructor () { super(); this.items = [] }
@@ -30,12 +29,6 @@ class FakeModule extends EventEmitter {
   listItems () { return this.items.slice() }
   clear () { this.items = [] } // void return — exercises undefined round-trip
   async close () { this.closed = true }
-}
-
-function createPipePair () {
-  const a = new Duplex({ write (data, cb) { queueMicrotask(() => b.push(b4a.from(data))); cb(null) } })
-  const b = new Duplex({ write (data, cb) { queueMicrotask(() => a.push(b4a.from(data))); cb(null) } })
-  return [a, b]
 }
 
 function withTimeout (p, ms) {

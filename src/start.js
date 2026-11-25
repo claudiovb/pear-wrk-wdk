@@ -4,7 +4,7 @@ const { toRpcError } = require('./exceptions/rpc-exception')
 
 /** @typedef {import('../types/rpc').RpcContext} RpcContext */
 /** @typedef {import('../types/hrpc/hrpc').HRPC} HRPC */
-/** @typedef {import('../types/bare-rpc').BareRPC} BareRPC */
+/** @typedef {import('../types/bare-rpc')} BareRPC */
 
 /**
  * What bare-stow gives the entry of a bundle packed with a server provider.

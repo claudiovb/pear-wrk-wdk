@@ -5,7 +5,7 @@ const { createErrorWithCode } = require('./utils/validation')
 
 /** @typedef {import('../types/rpc').RpcContext} RpcContext */
 /** @typedef {import('../types/hrpc/hrpc').HRPC} HRPC */
-/** @typedef {import('../types/bare-rpc').BareRPC} BareRPC */
+/** @typedef {import('../types/bare-rpc')} BareRPC */
 
 /**
  * Register all RPC handlers with the provided RPC instance

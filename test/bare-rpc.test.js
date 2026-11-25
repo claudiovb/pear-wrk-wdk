@@ -12,7 +12,7 @@
  * Run with: node --test test/bare-rpc.test.js
  */
 
-const { test, describe, beforeEach, afterEach } = require('node:test')
+const { test, describe, beforeEach, afterEach, mock } = require('node:test')
 const assert = require('node:assert')
 const { execFileSync } = require('node:child_process')
 const { once } = require('node:events')
@@ -27,6 +27,7 @@ const { createPipePair } = require('./helpers/pipe-pair')
 const LOG = 0
 const GENERATE_ENTROPY_AND_ENCRYPT = 4
 const INITIALIZE_WDK = 6
+const GET_SEED_AND_ENTROPY_FROM_MNEMONIC = 7
 const CALL_METHOD = 3
 const PING = 13
 
@@ -104,6 +105,55 @@ describe('BareRPC', () => {
       })
     })
 
+    test('should read a buffer field whose base64 is broken into lines, has no padding or is URL-safe', async () => {
+      let received
+      worklet.onInitializeWDK(async (init) => {
+        received = init
+
+        return { status: 'initialized' }
+      })
+
+      // 0xfb 0xff 0xbe is "+/++" in the standard alphabet and "-_--" in the URL-safe one.
+      const response = await request(rpc, INITIALIZE_WDK, JSON.stringify({
+        encryptionKey: 'AAECAwQFBgcICQoLDA0O\r\nDxAREhMUFRYXGBkaGxwdHh8=\n',
+        encryptedSeed: '-_--oaKjpKWmpw',
+        config: '{"networks":{}}'
+      }))
+
+      assert.strictEqual(response, '{"status":"initialized"}')
+      assert.deepStrictEqual(received, {
+        encryptionKey: ENCRYPTION_KEY,
+        encryptedSeed: Buffer.from('fbffbea1a2a3a4a5a6a7', 'hex'),
+        config: '{"networks":{}}'
+      })
+    })
+
+    for (const [reason, text] of [['has a character that is not base64', 'oaKj*KWmp6g='], ['cannot be base64 by its length', 'oaKjp']]) {
+      test(`should answer with BAD_REQUEST naming the field when a buffer field ${reason}, and keep answering`, async () => {
+        const handler = mock.fn(async () => ({ status: 'initialized' }))
+        worklet.onInitializeWDK(handler)
+        worklet.onPing(async () => ({}))
+
+        const call = request(rpc, INITIALIZE_WDK, JSON.stringify({
+          encryptionKey: ENCRYPTION_KEY.toString('base64'),
+          encryptedSeed: text,
+          config: '{"networks":{}}'
+        }))
+
+        await assert.rejects(call, (error) => {
+          assert.strictEqual(error.code, 'BAD_REQUEST')
+          assert.deepStrictEqual(JSON.parse(error.message), {
+            code: 'BAD_REQUEST',
+            name: 'Error',
+            message: 'encryptedSeed must be a base64 string'
+          })
+          return true
+        })
+        assert.strictEqual(handler.mock.callCount(), 0)
+        assert.strictEqual(await request(rpc, PING), '{}')
+      })
+    }
+
     test('should give the handler a buffer field that is null or left out as it arrived', async () => {
       let received
       worklet.onInitializeWDK(async (init) => {
@@ -130,6 +180,28 @@ describe('BareRPC', () => {
       worklet.onGenerateEntropyAndEncrypt(async () => secrets)
 
       const response = await request(rpc, GENERATE_ENTROPY_AND_ENCRYPT, '{"wordCount":12}')
+
+      assert.deepStrictEqual(JSON.parse(response), {
+        encryptionKey: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
+        encryptedSeedBuffer: 'oaKjpKWmp6g=',
+        encryptedEntropyBuffer: 'sbKztA=='
+      })
+      assert.deepStrictEqual(secrets, {
+        encryptionKey: Buffer.alloc(32),
+        encryptedSeedBuffer: Buffer.alloc(8),
+        encryptedEntropyBuffer: Buffer.alloc(4)
+      })
+    })
+
+    test('should zero the buffer fields of the response of getSeedAndEntropyFromMnemonic as well', async () => {
+      const secrets = {
+        encryptionKey: Buffer.from(ENCRYPTION_KEY),
+        encryptedSeedBuffer: Buffer.from(ENCRYPTED_SEED),
+        encryptedEntropyBuffer: Buffer.from('b1b2b3b4', 'hex')
+      }
+      worklet.onGetSeedAndEntropyFromMnemonic(async () => secrets)
+
+      const response = await request(rpc, GET_SEED_AND_ENTROPY_FROM_MNEMONIC, '{"mnemonic":"abandon"}')
 
       assert.deepStrictEqual(JSON.parse(response), {
         encryptionKey: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',

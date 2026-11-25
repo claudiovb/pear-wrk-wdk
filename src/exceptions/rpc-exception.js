@@ -43,6 +43,12 @@ const MAX_DETAIL_LENGTH = 256
 /** The most characters of a stack trace that are reported. */
 const MAX_STACK_LENGTH = 4096
 
+/** The most characters of a name that are reported. */
+const MAX_NAME_LENGTH = 128
+
+/** The most characters of a message that are reported. */
+const MAX_MESSAGE_LENGTH = 4096
+
 /** The name reported for a thrown value that is not an error. */
 const DEFAULT_ERROR_NAME = 'Error'
 
@@ -138,7 +144,35 @@ function collectDetails (error, reportedCode) {
 }
 
 /**
+ * Describe a message that is not a string by its JSON, cut like a detail.
+ * The secret fields and the byte arrays in it are left out. A value JSON
+ * cannot describe (a function, a cycle) gives an empty message.
+ * @param {unknown} message - The message of a thrown object.
+ * @returns {string} The text that is reported.
+ */
+function serializeMessage (message) {
+  try {
+    // A function, not an arrow: `this[key]` is the value before its toJSON().
+    const text = JSON.stringify(message, function (key, value) {
+      if (SECRET_KEYS.has(key) || ArrayBuffer.isView(this[key])) return undefined
+
+      return typeof value === 'bigint' ? value.toString() : value
+    })
+
+    return typeof text === 'string' ? text.slice(0, MAX_DETAIL_LENGTH) : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
  * Describe one thrown value by its name, its message and its simple properties.
+ *
+ * The name and the message are always strings, cut at a fixed length. A
+ * library can throw an object that is not an Error (a JSON-RPC error, for
+ * example), so they are read from any object. A name that is not a string
+ * is not reported. A message that is not a string is reported as its JSON
+ * (see serializeMessage). A value that is not an object is reported as text.
  * @param {unknown} error - The thrown value.
  * @param {Object} [options]
  * @param {ERROR_CODES} [options.reportedCode] - The code that is reported next to the description.
@@ -146,13 +180,22 @@ function collectDetails (error, reportedCode) {
  * @returns {ErrorDescription} The description.
  */
 function describeError (error, { reportedCode, debug = false } = {}) {
+  const isObject = error !== null && typeof error === 'object'
+
+  const name = isObject && typeof error.name === 'string' ? error.name : DEFAULT_ERROR_NAME
+
+  let message = ''
+  if (!isObject) message = String(error)
+  else if (typeof error.message === 'string') message = error.message
+  else if (error.message != null) message = serializeMessage(error.message)
+
   /** @type {ErrorDescription} */
   const description = {
-    name: error instanceof Error ? error.name : DEFAULT_ERROR_NAME,
-    message: error instanceof Error ? error.message : String(error)
+    name: name.slice(0, MAX_NAME_LENGTH),
+    message: message.slice(0, MAX_MESSAGE_LENGTH)
   }
 
-  if (error !== null && typeof error === 'object') {
+  if (isObject) {
     const details = collectDetails(error, reportedCode)
 
     if (Object.keys(details).length > 0) description.details = details

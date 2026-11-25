@@ -73,7 +73,7 @@ function createModuleRuntime (rpc, context) {
       })
     } catch (err) {
       entry.error = err
-      emit('error', toErrorPayload(err))
+      emit('error', toErrorPayload(err, context.debug))
       throw err
     }
 
@@ -81,7 +81,7 @@ function createModuleRuntime (rpc, context) {
       entry.ready = result.then(wire).catch((err) => {
         entry.error = err
         logger.error(`Module construction failed: ${name}: ${err && err.message}`)
-        emit('error', toErrorPayload(err))
+        emit('error', toErrorPayload(err, context.debug))
         throw err
       })
     } else {
@@ -204,11 +204,14 @@ async function materialize (value) {
   return value
 }
 
-// Serialize an error into a payload app devs can handle (name + message + stack).
-function toErrorPayload (err) {
-  return err instanceof Error
+// Serialize an error into a payload app devs can handle (name + message). The
+// stack is added in a debug build only, as for the error of a request.
+function toErrorPayload (err, debug) {
+  if (!(err instanceof Error)) return { name: 'Error', message: String(err) }
+
+  return debug
     ? { name: err.name, message: err.message, stack: err.stack }
-    : { name: 'Error', message: String(err) }
+    : { name: err.name, message: err.message }
 }
 
 function normalize (value) {
